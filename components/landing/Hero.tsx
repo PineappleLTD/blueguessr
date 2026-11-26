@@ -4,9 +4,8 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Camera, Flag, Images, Play, Swords, Target, Trophy, Users, type LucideIcon } from "lucide-react";
+import { Camera, Play, Swords, Trophy } from "lucide-react";
 import type { RotatingEarthHandle } from "@/components/ui/wireframe-dotted-globe";
-import { BULLSEYE_METERS, ROUNDS_PER_GAME, VERSUS_MAX_PLAYERS } from "@/lib/scoring";
 import ParticleDunes from "./ParticleDunes";
 import Wordmark from "./Wordmark";
 
@@ -19,13 +18,7 @@ const START_ROTATION: [number, number] = [58, -26];
 /** How long PLAY's dive into Ann Arbor runs before the game page takes over. */
 const LAUNCH_MS = 820;
 
-interface Stat {
-  icon: LucideIcon;
-  value: ReactNode;
-  label: string;
-}
-
-export default function Hero({ photoCount, header }: { photoCount: number; header?: ReactNode }) {
+export default function Hero({ header, footer }: { header?: ReactNode; footer?: ReactNode }) {
   const router = useRouter();
   const globeRef = useRef<RotatingEarthHandle>(null);
   const launchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -52,13 +45,6 @@ export default function Hero({ photoCount, header }: { photoCount: number; heade
     void globeRef.current?.flyTo(ANN_ARBOR, { duration: 620 });
     launchTimer.current = setTimeout(() => router.push("/play"), LAUNCH_MS);
   };
-
-  const stats: Stat[] = [
-    ...(photoCount > 0 ? [{ icon: Images, value: photoCount, label: "photos" }] : []),
-    { icon: Flag, value: ROUNDS_PER_GAME, label: "rounds" },
-    { icon: Target, value: `${BULLSEYE_METERS} m`, label: "bullseye" },
-    { icon: Users, value: VERSUS_MAX_PLAYERS, label: "players" },
-  ];
 
   return (
     <section className="lp-hero" data-launch={launching || undefined}>
@@ -91,16 +77,6 @@ export default function Hero({ photoCount, header }: { photoCount: number; heade
             <Wordmark />
           </h1>
 
-          <ul className="lp-chips" aria-label="Game facts">
-            {stats.map(({ icon: Icon, value, label }, i) => (
-              <li key={label} className="lp-chip" style={{ "--i": i } as React.CSSProperties}>
-                <Icon className="size-4 text-maize/70" strokeWidth={2.5} aria-hidden />
-                <b>{value}</b>
-                <span>{label}</span>
-              </li>
-            ))}
-          </ul>
-
           <div className="lp-ctas">
             <Link href="/play" onNavigate={launch} className="btn-game lp-play">
               <Play className="size-[0.9em]" fill="currentColor" strokeWidth={2.5} aria-hidden />
@@ -126,6 +102,7 @@ export default function Hero({ photoCount, header }: { photoCount: number; heade
       </div>
 
       <ParticleDunes className="lp-dunes" />
+      {footer}
       <div className="lp-flash" aria-hidden />
     </section>
   );
