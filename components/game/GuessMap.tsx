@@ -5,6 +5,7 @@ import type { Map as MLMap, Marker as MLMarker, GeoJSONSource } from "maplibre-g
 import { useEffect, useRef, useState } from "react";
 import { CAMPUS } from "@/lib/campus";
 import { bounds, CAMPUS_FALLBACK_BOUNDS } from "@/lib/geo";
+import { LANDMARKS_GEOJSON, setLandmarksOn, useLandmarksOn } from "@/lib/landmarks";
 import type { LngLat } from "@/lib/types";
 
 export const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -35,6 +36,8 @@ export interface GuessMapProps {
   guessColor?: string;
   /** Change this (e.g. the round number) to reset the view to the whole campus. */
   resetKey?: string | number;
+  /** Show the Landmarks checkbox in the map's top-right corner (default true). */
+  landmarkToggle?: boolean;
   className?: string;
 }
 
@@ -96,12 +99,17 @@ export default function GuessMap({
   pins,
   guessColor = MAIZE,
   resetKey,
+  landmarkToggle = true,
   className = "",
 }: GuessMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<MLMarker[]>([]);
   const markerCtor = useRef<typeof MLMarker | null>(null);
+  const landmarksOn = useLandmarksOn();
+  const landmarksOnRef = useRef(landmarksOn);
+  /** True while the view should stay fitted to campus (until a reveal or a user pan/zoom). */
+  const showCampus = useRef(true);
   const onGuessRef = useRef(onGuess);
   const [ready, setReady] = useState(false);
 
@@ -161,6 +169,42 @@ export default function GuessMap({
           layout: { "line-cap": "round" },
           paint: { "line-color": ["get", "color"], "line-width": 3.5, "line-dasharray": [0.1, 2] },
         });
+
+        // Landmarks sit under the answer lines. Labels that would overlap are hidden (lower
+        // rank wins), so zoomed out you see a few and zooming in reveals the rest.
+        const visibility = landmarksOnRef.current ? "visible" : "none";
+        map.addSource("landmarks", { type: "geojson", data: LANDMARKS_GEOJSON });
+        map.addLayer(
+          {
+            id: "landmark-dots",
+            type: "circle",
+            source: "landmarks",
+            layout: { visibility },
+            paint: { "circle-radius": 4, "circle-color": MAIZE, "circle-stroke-color": BLUE, "circle-stroke-width": 1.5 },
+          },
+          "lines",
+        );
+        map.addLayer(
+          {
+            id: "landmark-labels",
+            type: "symbol",
+            source: "landmarks",
+            layout: {
+              visibility,
+              "text-field": ["get", "name"],
+              "text-font": ["Noto Sans Bold"],
+              "text-size": 11.5,
+              "text-transform": "uppercase",
+              "text-letter-spacing": 0.04,
+              "text-anchor": "top",
+              "text-offset": [0, 0.7],
+              "text-padding": 3,
+              "symbol-sort-key": ["get", "rank"],
+            },
+            paint: { "text-color": MAIZE, "text-halo-color": BLUE, "text-halo-width": 1.8 },
+          },
+          "lines",
+        );
         setReady(true);
       });
 
@@ -168,7 +212,15 @@ export default function GuessMap({
         onGuessRef.current?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
       });
 
-      ro = new ResizeObserver(() => map.resize());
+      // A user pan or zoom stops the map from re-fitting campus when its box changes size.
+      map.on("movestart", (e) => {
+        if (e.originalEvent) showCampus.current = false;
+      });
+      ro = new ResizeObserver(() => {
+        map.resize();
+        // The dock shrinks back to the corner after a reveal: keep all of campus in view while it does.
+        if (showCampus.current) map.fitBounds(campusBounds, { padding: 24, duration: 0 });
+      });
       ro.observe(containerRef.current);
     })();
     return () => {
@@ -181,6 +233,13 @@ export default function GuessMap({
     };
   }, []);
 
+  useEffect(() => {
+    landmarksOnRef.current = landmarksOn;
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const id of ["landmark-dots", "landmark-labels"]) map.setLayoutProperty(id, "visibility", landmarksOn ? "visible" : "none");
+  }, [landmarksOn, ready]);
+
   // Cursor shows whether clicks do anything.
   useEffect(() => {
     const canvas = mapRef.current?.getCanvas();
@@ -190,6 +249,7 @@ export default function GuessMap({
   // Reset the view between rounds.
   useEffect(() => {
     if (!ready || resetKey === undefined) return;
+    showCampus.current = true;
     mapRef.current?.fitBounds(campusBounds, { padding: 24, duration: 600 });
   }, [resetKey, ready]);
 
@@ -216,6 +276,7 @@ export default function GuessMap({
 
     const lines = map.getSource("lines") as GeoJSONSource | undefined;
     if (answer) {
+      showCampus.current = false;
       markersRef.current.push(
         new Marker({ element: answerElement(), anchor: "center" }).setLngLat([answer.lng, answer.lat]).addTo(map),
       );
@@ -245,5 +306,20 @@ export default function GuessMap({
     }
   }, [guess, pins, answer, guessColor, ready]);
 
-  return <div ref={containerRef} className={`h-full w-full ${className}`} />;
+  return (
+    <div className={`relative h-full w-full ${className}`}>
+      <div ref={containerRef} className="h-full w-full" />
+      {landmarkToggle && (
+        <label className="absolute top-2 right-2 z-10 flex h-8 cursor-pointer items-center gap-1.5 rounded-xl border border-maize/30 bg-night/80 px-2.5 text-xs font-bold tracking-wide text-maize uppercase backdrop-blur select-none hover:bg-mblue">
+          <input
+            type="checkbox"
+            checked={landmarksOn}
+            onChange={(e) => setLandmarksOn(e.target.checked)}
+            className="size-3.5 accent-maize"
+          />
+          Landmarks
+        </label>
+      )}
+    </div>
+  );
 }

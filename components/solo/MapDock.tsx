@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, LoaderCircle, Map as MapIcon, MapPin, Maximize2, Minimize2 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import GuessMap from "@/components/game/GuessMap";
 import type { LngLat } from "@/lib/types";
 import { useElapsed, useReducedMotion } from "./hooks";
@@ -45,6 +45,13 @@ export default function MapDock({
   const reduced = useReducedMotion();
   const [hover, setHover] = useState(false);
   const [locked, setLocked] = useState(false);
+  // Every round starts with the small map in the corner, even if the last one was made big.
+  const [dockRound, setDockRound] = useState(round);
+  if (round !== dockRound) {
+    setDockRound(round);
+    setHover(false);
+    setLocked(false);
+  }
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const dockRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +77,29 @@ export default function MapDock({
     };
   }, []);
   const reveal = phase === "reveal";
+
+  // Where the mouse was when this round began. The browser reports a hover when the dock shrinks
+  // back under a cursor that never moved, so the map only grows once the mouse really moves.
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
+  const stillAt = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const track = (e: PointerEvent) => {
+      lastPointer.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener("pointermove", track, { passive: true });
+    return () => window.removeEventListener("pointermove", track);
+  }, []);
+  useLayoutEffect(() => {
+    stillAt.current = lastPointer.current;
+  }, [round]);
+  const hoverIn = (e: ReactPointerEvent) => {
+    if (e.pointerType !== "mouse" || reveal) return;
+    const s = stillAt.current;
+    if (s && Math.abs(e.clientX - s.x) < 3 && Math.abs(e.clientY - s.y) < 3) return;
+    stillAt.current = null;
+    clearTimeout(leaveTimer.current);
+    setHover(true);
+  };
   // Let the map finish growing before the answer zooms in, so the fit uses the final size.
   const grown = useElapsed(reveal ? `reveal-${round}` : null, reduced ? 0 : 520);
 
@@ -131,11 +161,8 @@ export default function MapDock({
         ref={dockRef}
         className={`fixed z-30 flex flex-col ${phone && !reveal ? "rounded-t-[1.75rem] border-t-2 border-maize/50 bg-night/95 shadow-[0_-20px_60px_rgba(0,0,0,.55)] backdrop-blur-md" : ""} ${!phone && !reveal ? "gap-2.5" : ""}`}
         style={style}
-        onPointerEnter={(e) => {
-          if (e.pointerType !== "mouse" || reveal) return;
-          clearTimeout(leaveTimer.current);
-          setHover(true);
-        }}
+        onPointerEnter={hoverIn}
+        onPointerMove={hoverIn}
         onPointerLeave={(e) => {
           if (e.pointerType !== "mouse") return;
           clearTimeout(leaveTimer.current);

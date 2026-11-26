@@ -2,6 +2,7 @@
 
 import { MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
+import { setLandmarksOn, useLandmarksOn } from "@/lib/landmarks";
 import DotDunes from "./DotDunes";
 import { prefersReducedMotion } from "./hooks";
 
@@ -26,6 +27,7 @@ export default function StartScreen({ ready, onGo }: { ready: boolean; onGo: () 
     return () => timers.forEach(clearTimeout);
   }, [ready, onGo]);
 
+  const landmarks = useLandmarksOn();
   const label = step >= 0 ? LABELS[step] : null;
   const go = step === LABELS.length - 1;
 
@@ -41,6 +43,18 @@ export default function StartScreen({ ready, onGo }: { ready: boolean; onGo: () 
       <div className="absolute inset-x-0 bottom-0 h-[46%] opacity-80">
         <DotDunes rows={10} />
       </div>
+      <label
+        onClick={(e) => e.stopPropagation()}
+        className="absolute bottom-[max(2rem,env(safe-area-inset-bottom))] left-1/2 z-10 flex h-11 -translate-x-1/2 cursor-pointer items-center gap-2.5 rounded-2xl border border-maize/35 bg-night/85 px-4 text-sm font-bold tracking-wide text-maize uppercase backdrop-blur select-none hover:bg-mblue"
+      >
+        <input
+          type="checkbox"
+          checked={landmarks}
+          onChange={(e) => setLandmarksOn(e.target.checked)}
+          className="size-4 accent-maize"
+        />
+        Landmarks
+      </label>
 
       <div className="relative grid size-[min(78vw,380px)] place-items-center">
         {!label && (
