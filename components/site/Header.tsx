@@ -1,32 +1,36 @@
 import Link from "next/link";
-
-const LINKS = [
-  { href: "/play", label: "Play" },
-  { href: "/versus", label: "Versus" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/contribute", label: "Contribute" },
-];
+import { Suspense } from "react";
+import HeaderNav from "./HeaderNav";
+import { MenuButtonPlaceholder, NavList } from "./NavList";
 
 /** Top bar used on every page except the in-game screens. */
-export default function Header() {
+export default function Header({ className = "" }: { className?: string }) {
   return (
-    <header className="relative z-30 flex items-center justify-between gap-4 px-5 py-4 sm:px-8">
-      <Link href="/" className="group flex items-center gap-2">
+    <header
+      className={`relative z-30 flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:px-8 sm:py-4 ${className}`}
+    >
+      <Link href="/" aria-label="BlueGuessr home" className="site-logo group">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/icon.svg" alt="" className="size-8 transition-transform group-hover:-rotate-12 group-hover:scale-110" />
-        <span className="text-display text-2xl text-maize-gradient">BlueGuessr</span>
+        <img
+          src="/icon.svg"
+          alt=""
+          width={36}
+          height={36}
+          className="size-9 rounded-[10px] shadow-[0_3px_0_var(--gold-deep)] transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:-rotate-12"
+        />
+        <span className="text-display text-[1.75rem] text-maize-gradient">BlueGuessr</span>
       </Link>
-      <nav className="flex items-center gap-1 text-sm font-semibold sm:gap-2">
-        {LINKS.map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            className="rounded-full px-3 py-1.5 text-foreground/70 transition-colors hover:bg-maize/10 hover:text-maize"
-          >
-            {l.label}
-          </Link>
-        ))}
-      </nav>
+      {/* The active tab reads the URL, which can suspend on dynamic routes: keep the rest static. */}
+      <Suspense
+        fallback={
+          <>
+            <NavList pathname={null} />
+            <MenuButtonPlaceholder />
+          </>
+        }
+      >
+        <HeaderNav />
+      </Suspense>
     </header>
   );
 }

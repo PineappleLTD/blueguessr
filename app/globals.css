@@ -268,3 +268,463 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-float, .animate-wave-drift { animation: none; }
 }
+
+/* =======================================================================
+ * Landing page + site shell (header, phone menu, footer, 404).
+ * Owned by the landing feature. Other features don't need any of this:
+ * they only render <Header /> and <Footer />, which bring their own looks.
+ * ======================================================================= */
+@layer components {
+
+/* ---------- Header ---------- */
+.site-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 0.9rem;
+  outline-offset: 4px;
+}
+
+.site-tab,
+.site-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.9rem 0.5rem;
+  border-radius: 0.85rem;
+  font-family: var(--font-barlow-condensed);
+  font-weight: 700;
+  font-style: italic;
+  font-size: 1.05rem;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: oklch(0.97 0.02 95 / 0.8);
+  background: oklch(0.22 0.06 258 / 0.6);
+  border: 1px solid oklch(0.87 0.18 93 / 0.14);
+  box-shadow: 0 3px 0 oklch(0.09 0.03 258 / 0.95);
+  backdrop-filter: blur(8px);
+  transition: transform 120ms ease, color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  &:hover { color: var(--maize); border-color: oklch(0.87 0.18 93 / 0.35); transform: translateY(-1px); box-shadow: 0 4px 0 oklch(0.09 0.03 258 / 0.95); }
+  &:active { transform: translateY(3px); box-shadow: 0 0 0 oklch(0.09 0.03 258 / 0.95); }
+}
+.site-tab[aria-current="page"] {
+  color: var(--primary-foreground);
+  background: linear-gradient(180deg, var(--maize-soft) 0%, var(--maize) 50%, var(--gold) 100%);
+  border-color: transparent;
+  box-shadow: 0 3px 0 var(--gold-deep);
+}
+.site-menu-btn {
+  padding: 0.6rem 0.85rem 0.55rem;
+  color: var(--maize);
+}
+
+/* Phone menu: a full-screen pause menu. */
+.site-menu {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--foreground);
+  background:
+    radial-gradient(120% 70% at 50% 0%, oklch(0.25 0.075 256 / 0.97), transparent 75%),
+    oklch(0.13 0.035 258 / 0.98);
+  &::backdrop { background: oklch(0.1 0.03 258 / 0.6); }
+  &[open] { animation: site-menu-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+}
+.site-menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.8rem;
+  padding: 1.05rem 1.35rem 1rem;
+  border-radius: 1.2rem;
+  font-size: 1.95rem;
+}
+.site-menu[open] .site-menu-item {
+  animation: bg-pop 380ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+  animation-delay: calc(60ms + var(--i, 0) * 55ms);
+}
+.site-menu-item[aria-current="page"] { outline: 3px solid var(--maize); outline-offset: 3px; }
+.site-menu-close {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.95rem;
+  color: var(--maize);
+  background: oklch(0.24 0.065 257);
+  border: 1px solid oklch(0.87 0.18 93 / 0.2);
+  box-shadow: 0 4px 0 oklch(0.09 0.03 258);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  &:active { transform: translateY(4px); box-shadow: 0 0 0 oklch(0.09 0.03 258); }
+}
+
+/* ---------- Footer ---------- */
+.site-pineapple {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.9rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: oklch(0.97 0.02 95 / 0.82);
+  transition: color 150ms ease;
+  &:hover { color: var(--maize); }
+}
+.site-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: oklch(0.97 0.02 95 / 0.7);
+  transition: color 150ms ease, background-color 150ms ease;
+  &:hover { color: var(--maize); background: oklch(0.87 0.18 93 / 0.08); }
+}
+
+/* ---------- Landing hero ---------- */
+.lp-hero {
+  --g: min(58svh, 90vw, 620px); /* globe diameter */
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  overflow: hidden;
+}
+.lp-sky {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(70% 45% at 50% 34%, oklch(0.32 0.1 255 / 0.55), transparent 70%),
+    radial-gradient(130% 55% at 50% 100%, oklch(0.22 0.07 256 / 0.9), transparent 70%),
+    linear-gradient(180deg, oklch(0.11 0.03 258) 0%, var(--night) 45%, oklch(0.14 0.04 258) 100%);
+}
+/* A sprinkle of stars, fading out toward the horizon. */
+.lp-sky::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(1.2px 1.2px at 18px 26px, oklch(0.97 0.05 95) 50%, transparent 60%),
+    radial-gradient(1px 1px at 96px 74px, oklch(0.9 0.12 90) 50%, transparent 60%),
+    radial-gradient(1.4px 1.4px at 150px 18px, oklch(0.97 0.03 95) 50%, transparent 60%),
+    radial-gradient(1px 1px at 60px 128px, oklch(0.97 0.03 95) 50%, transparent 60%),
+    radial-gradient(1px 1px at 210px 110px, oklch(0.9 0.12 90) 50%, transparent 60%);
+  background-size: 240px 160px;
+  mask-image: linear-gradient(180deg, #000 0%, #000 30%, transparent 70%);
+}
+
+.lp-stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 1rem 6.5rem;
+}
+@media (min-width: 640px) { .lp-stage { padding-bottom: 8rem; } }
+
+.lp-globe {
+  position: absolute;
+  top: 0.25rem;
+  left: 50%;
+  width: var(--g);
+  height: var(--g);
+  translate: -50% 0;
+  z-index: 0;
+}
+/* Atmosphere. */
+.lp-globe::before {
+  content: "";
+  position: absolute;
+  inset: -7%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, oklch(0.87 0.18 93 / 0.18) 72%, oklch(0.87 0.18 93 / 0.06) 86%, transparent);
+}
+.lp-globe-spin {
+  position: absolute;
+  inset: 0;
+  animation: lp-globe-in 1200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.lp-ui {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  padding-top: calc(var(--g) * 0.56);
+}
+
+.lp-title {
+  margin: 0;
+  font-size: clamp(3.5rem, min(16.5vw, 21svh), 12.5rem);
+  line-height: 1;
+}
+.lp-wordmark {
+  display: inline-flex;
+  font-family: var(--font-barlow-condensed);
+  font-weight: 800;
+  font-style: italic;
+  line-height: 0.84;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  /* Extruded gold edge, a navy keyline, then a soft drop. */
+  filter:
+    drop-shadow(0 0.028em 0 #B57F0B)
+    drop-shadow(0 0.028em 0 #7A5508)
+    drop-shadow(0 0.02em 0 #0B1830)
+    drop-shadow(0 0.14em 0.12em oklch(0 0 0 / 0.5));
+}
+.lp-wm-letter {
+  display: inline-block;
+  /* Room for italic overhangs so the clipped gradient covers the whole glyph. */
+  padding: 0.08em 0.1em 0.1em 0.04em;
+  margin: -0.08em -0.1em -0.1em -0.04em;
+  background-image:
+    linear-gradient(100deg, transparent 40%, oklch(1 0 0 / 0.85) 50%, transparent 60%),
+    linear-gradient(180deg, #FFF6C8 6%, #FFE15A 26%, #FFCB05 50%, #F0AE14 76%, #D18E0A 100%);
+  background-size: 300% 100%, 100% 100%;
+  background-position: 90% 0, 0 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation:
+    lp-wm-drop 760ms cubic-bezier(0.2, 0.9, 0.25, 1.25) both,
+    lp-wm-glint 900ms ease-in-out both;
+  animation-delay: calc(120ms + var(--i, 0) * 55ms), calc(1300ms + var(--i, 0) * 45ms);
+}
+
+.lp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: clamp(0.9rem, 2.4svh, 1.5rem) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.38rem 0.85rem 0.38rem 0.65rem;
+  border-radius: 999px;
+  background: oklch(0.15 0.045 258 / 0.8);
+  border: 1px solid oklch(0.87 0.18 93 / 0.2);
+  box-shadow: 0 2px 0 oklch(0.08 0.02 258 / 0.8);
+  backdrop-filter: blur(6px);
+  animation: bg-pop 420ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+  animation-delay: calc(950ms + var(--i, 0) * 70ms);
+  & b {
+    font-family: var(--font-barlow-condensed);
+    font-weight: 800;
+    font-style: italic;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: var(--maize);
+  }
+  & span { font-size: 0.8rem; font-weight: 600; color: oklch(0.97 0.02 95 / 0.72); }
+}
+
+.lp-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.9rem 1.1rem;
+  margin-top: clamp(1.1rem, 3.2svh, 2rem);
+  animation: lp-rise 620ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both 1050ms;
+}
+.lp-play {
+  gap: 0.55rem;
+  min-width: 10ch;
+  padding: 1.05rem 2.5rem 1rem;
+  border-radius: 1.35rem;
+  font-size: clamp(2.1rem, 3.3vw, 2.75rem);
+  box-shadow: 0 8px 0 var(--gold-deep), 0 14px 36px oklch(0.87 0.18 93 / 0.35);
+  &:hover { box-shadow: 0 9px 0 var(--gold-deep), 0 18px 44px oklch(0.87 0.18 93 / 0.45); }
+  &:active { transform: translateY(7px); box-shadow: 0 1px 0 var(--gold-deep), 0 6px 14px oklch(0.87 0.18 93 / 0.25); }
+  /* A ring that breathes out of PLAY now and then. */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: inherit;
+    border: 3px solid var(--maize);
+    opacity: 0;
+    pointer-events: none;
+    animation: lp-ring 2800ms ease-out infinite 2400ms;
+  }
+}
+.lp-versus {
+  gap: 0.5rem;
+  padding: 0.95rem 1.8rem 0.9rem;
+  border-radius: 1.2rem;
+  font-size: clamp(1.55rem, 2.3vw, 1.95rem);
+}
+
+.lp-minor {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 1.15rem;
+  animation: lp-rise 620ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both 1150ms;
+}
+.lp-minor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.62rem 1rem 0.56rem;
+  border-radius: 0.9rem;
+  font-family: var(--font-barlow-condensed);
+  font-weight: 700;
+  font-style: italic;
+  font-size: 1.15rem;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--maize-soft);
+  background: oklch(0.17 0.05 258 / 0.85);
+  border: 1.5px solid oklch(0.87 0.18 93 / 0.3);
+  box-shadow: 0 4px 0 oklch(0.09 0.025 258);
+  backdrop-filter: blur(6px);
+  transition: transform 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  &:hover { color: var(--maize); border-color: oklch(0.87 0.18 93 / 0.6); transform: translateY(-1px); box-shadow: 0 5px 0 oklch(0.09 0.025 258); }
+  &:active { transform: translateY(4px); box-shadow: 0 0 0 oklch(0.09 0.025 258); }
+}
+
+.lp-dunes {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 1;
+  height: max(34svh, 230px);
+}
+/* Night settles in front of the globe below the horizon, so it sinks behind the dunes. */
+.lp-dunes::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 8%, oklch(0.13 0.035 258 / 0.92) 22%, var(--night) 55%);
+}
+/* Warm haze on the horizon. */
+.lp-dunes::after {
+  content: "";
+  position: absolute;
+  inset-inline: 6%;
+  top: 11%;
+  height: 14%;
+  background: radial-gradient(closest-side, oklch(0.87 0.18 93 / 0.16), transparent);
+}
+
+.lp-footer {
+  z-index: 20;
+  margin-top: -3.5rem;
+}
+@media (min-width: 640px) { .lp-footer { margin-top: -5rem; } }
+
+/* ---------- PLAY: dive into Ann Arbor ---------- */
+.lp-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 35%, oklch(0.87 0.18 93 / 0.25), var(--night) 55%);
+}
+.lp-hero[data-launch] {
+  .lp-flash { opacity: 1; transition: opacity 300ms ease 520ms; }
+  .lp-ui > * { animation: none; opacity: 0; transform: translateY(16px) scale(0.96); transition: opacity 240ms ease, transform 300ms cubic-bezier(0.5, 0, 0.75, 0); }
+  .lp-ui > .lp-title { transform: scale(1.3); }
+  .lp-globe { transform: scale(3.2); transition: transform 780ms cubic-bezier(0.65, 0, 0.35, 1) 100ms; }
+  .lp-dunes { opacity: 0; translate: 0 25%; transition: opacity 400ms ease, translate 500ms ease; }
+  > header { opacity: 0; transition: opacity 200ms ease; }
+}
+
+/* ---------- 404 ---------- */
+.nf-404 {
+  font-size: clamp(7rem, 34vw, 17rem);
+  line-height: 0.8;
+  filter: drop-shadow(0 0.03em 0 #B57F0B) drop-shadow(0 0.03em 0 #7A5508) drop-shadow(0 0.12em 0.1em oklch(0 0 0 / 0.5));
+}
+.nf-trail {
+  stroke-dasharray: 2 14;
+  animation: nf-march 1.6s linear infinite;
+}
+.nf-pin {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: nf-lost 3.2s ease-in-out infinite;
+}
+
+}
+
+@keyframes site-menu-in {
+  from { opacity: 0; transform: translateY(-10px); }
+}
+@keyframes lp-globe-in {
+  from { opacity: 0; transform: scale(0.84) rotate(-10deg); }
+}
+@keyframes lp-wm-drop {
+  0% { opacity: 0; transform: translateY(-0.55em) scale(1.3) rotate(-10deg); }
+  55% { opacity: 1; transform: translateY(0.05em) scale(0.95) rotate(2deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes lp-wm-glint {
+  from { background-position: 90% 0, 0 0; }
+  to { background-position: 10% 0, 0 0; }
+}
+@keyframes lp-rise {
+  from { opacity: 0; transform: translateY(22px) scale(0.94); }
+}
+@keyframes lp-ring {
+  0% { opacity: 0.75; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(1.14, 1.4); }
+}
+@keyframes nf-march {
+  to { stroke-dashoffset: -32; }
+}
+@keyframes nf-lost {
+  0%, 100% { transform: translate(0, 0) rotate(-8deg); }
+  25% { transform: translate(-6px, -10px) rotate(6deg); }
+  50% { transform: translate(4px, -2px) rotate(-4deg); }
+  75% { transform: translate(8px, -12px) rotate(9deg); }
+}
+
+@media (max-width: 639px) {
+  .lp-ctas { width: 100%; max-width: 23rem; flex-direction: column; align-items: stretch; gap: 0.85rem; }
+  .lp-minor { width: 100%; max-width: 23rem; flex-wrap: nowrap; }
+  .lp-minor-btn { flex: 1; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-menu[open],
+  .site-menu[open] .site-menu-item,
+  .lp-globe-spin,
+  .lp-wm-letter,
+  .lp-chip,
+  .lp-ctas,
+  .lp-minor,
+  .lp-play::after,
+  .nf-trail,
+  .nf-pin {
+    animation: none !important;
+  }
+}

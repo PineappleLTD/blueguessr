@@ -1,7 +1,15 @@
+import Hero from "@/components/landing/Hero";
+import Footer from "@/components/site/Footer";
+import Header from "@/components/site/Header";
+import { staticPhotos } from "@/lib/photos";
+
 export default function Home() {
+  // Only the count leaves the server: data/photos.json holds the answers.
+  const photoCount = staticPhotos().length;
   return (
-    <main className="flex flex-1 items-center justify-center">
-      <h1 className="text-display text-7xl text-maize-gradient">BlueGuessr</h1>
-    </main>
+    <>
+      <Hero photoCount={photoCount} header={<Header />} />
+      <Footer className="lp-footer" />
+    </>
   );
 }

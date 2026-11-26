@@ -1,7 +1,19 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import * as d3 from "d3"
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react"
+import { geoBounds, geoGraticule, geoOrthographic, geoPath, timer, type GeoPermissibleObjects } from "d3"
+
+/** Natural Earth 110m land polygons (public domain). Pass `dataUrl` to use a self-hosted copy. */
+const DEFAULT_DATA_URL =
+  "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/110m/physical/ne_110m_land.json"
+
+export interface RotatingEarthHandle {
+  /**
+   * Spin the globe until `target` ([lng, lat]) faces the viewer, optionally zooming by `zoom`
+   * (1 = normal size). Auto-rotation stops. Resolves when the animation ends.
+   */
+  flyTo(target: [number, number], options?: { duration?: number; zoom?: number }): Promise<void>
+}
 
 interface RotatingEarthProps {
   width?: number
@@ -18,11 +30,108 @@ interface RotatingEarthProps {
   markerColor?: string
   /** Starting rotation, [lambda, phi]. */
   initialRotation?: [number, number]
-  /** Degrees per frame. */
+  /** Degrees per frame (at 60 fps). */
   rotationSpeed?: number
   /** Show the "Drag to rotate • Scroll to zoom" hint. */
   showHint?: boolean
+  /** GeoJSON FeatureCollection of land polygons. Defaults to Natural Earth 110m land on GitHub. */
+  dataUrl?: string
+  /**
+   * Size the globe to its parent (which needs a size) instead of `width`/`height`,
+   * and follow it when it resizes.
+   */
+  fill?: boolean
+  /** Scroll to zoom. Turn off on scrolling pages so the wheel keeps scrolling the page. */
+  zoomable?: boolean
+  /** Drag to rotate. */
+  draggable?: boolean
+  /** Imperative controls, e.g. `flyTo`. */
+  ref?: Ref<RotatingEarthHandle>
 }
+
+// ---------------------------------------------------------------------------
+// Land data, fetched and turned into halftone dots once per URL and shared by every globe.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LandCollection = { type: "FeatureCollection"; features: any[] }
+
+interface Land {
+  collection: LandCollection
+  /** Dot longitudes (radians) and the sine/cosine of their latitudes. */
+  lambda: Float32Array
+  sinPhi: Float32Array
+  cosPhi: Float32Array
+}
+
+const landCache = new Map<string, Promise<Land>>()
+
+const pointInPolygon = (point: [number, number], polygon: number[][]): boolean => {
+  const [x, y] = point
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i]
+    const [xj, yj] = polygon[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pointInFeature = (point: [number, number], feature: any): boolean => {
+  const geometry = feature.geometry
+  const polygons: number[][][][] =
+    geometry?.type === "Polygon" ? [geometry.coordinates] : geometry?.type === "MultiPolygon" ? geometry.coordinates : []
+  for (const polygon of polygons) {
+    // In the outer ring and not in a hole.
+    if (pointInPolygon(point, polygon[0]) && !polygon.slice(1).some((hole) => pointInPolygon(point, hole))) return true
+  }
+  return false
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const generateDotsInFeature = (feature: any, out: number[], dotSpacing = 16) => {
+  const [[minLng, minLat], [maxLng, maxLat]] = geoBounds(feature)
+  const stepSize = dotSpacing * 0.08
+  for (let lng = minLng; lng <= maxLng; lng += stepSize) {
+    for (let lat = minLat; lat <= maxLat; lat += stepSize) {
+      if (pointInFeature([lng, lat], feature)) out.push(lng, lat)
+    }
+  }
+}
+
+function loadLand(url: string): Promise<Land> {
+  let pending = landCache.get(url)
+  if (!pending) {
+    pending = fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error("Failed to load land data")
+        return response.json() as Promise<LandCollection>
+      })
+      .then((collection) => {
+        const lngLat: number[] = []
+        collection.features.forEach((feature) => generateDotsInFeature(feature, lngLat))
+        const n = lngLat.length / 2
+        const lambda = new Float32Array(n)
+        const sinPhi = new Float32Array(n)
+        const cosPhi = new Float32Array(n)
+        for (let i = 0; i < n; i++) {
+          const phi = (lngLat[i * 2 + 1] * Math.PI) / 180
+          lambda[i] = (lngLat[i * 2] * Math.PI) / 180
+          sinPhi[i] = Math.sin(phi)
+          cosPhi[i] = Math.cos(phi)
+        }
+        return { collection, lambda, sinPhi, cosPhi }
+      })
+    pending.catch(() => landCache.delete(url))
+    landCache.set(url, pending)
+  }
+  return pending
+}
+
+const RAD = Math.PI / 180
+const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+
+// ---------------------------------------------------------------------------
 
 export default function RotatingEarth({
   width = 800,
@@ -36,306 +145,367 @@ export default function RotatingEarth({
   initialRotation = [0, 0],
   rotationSpeed: speed = 0.5,
   showHint = true,
+  dataUrl = DEFAULT_DATA_URL,
+  fill = false,
+  zoomable = true,
+  draggable = true,
+  ref,
 }: RotatingEarthProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const apiRef = useRef<RotatingEarthHandle | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!canvasRef.current) return
+  useImperativeHandle(
+    ref,
+    () => ({
+      flyTo: (target, options) => apiRef.current?.flyTo(target, options) ?? Promise.resolve(),
+    }),
+    [],
+  )
 
+  const markerLng = marker?.[0]
+  const markerLat = marker?.[1]
+  const rotLambda = initialRotation[0]
+  const rotPhi = initialRotation[1]
+
+  useEffect(() => {
+    const root = rootRef.current
     const canvas = canvasRef.current
+    if (!root || !canvas) return
     const context = canvas.getContext("2d")
     if (!context) return
 
-    // Set up responsive dimensions
-    const containerWidth = Math.min(width, window.innerWidth - 40)
-    const containerHeight = Math.min(height, window.innerHeight - 100)
-    const radius = Math.min(containerWidth, containerHeight) / 2.5
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    const markerPoint: [number, number] | null =
+      markerLng !== undefined && markerLat !== undefined ? [markerLng, markerLat] : null
 
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = containerWidth * dpr
-    canvas.height = containerHeight * dpr
-    canvas.style.width = `${containerWidth}px`
-    canvas.style.height = `${containerHeight}px`
-    context.scale(dpr, dpr)
+    // Size. `fill` follows the parent; otherwise the original fixed size, capped by the window.
+    let containerWidth = 0
+    let containerHeight = 0
+    let radius = 1
+    let dpr = 1
+    const projection = geoOrthographic().clipAngle(90)
+    const path = geoPath().projection(projection).context(context)
+    const graticule = geoGraticule()()
 
-    // Create projection and path generator for Canvas
-    const projection = d3
-      .geoOrthographic()
-      .scale(radius)
-      .translate([containerWidth / 2, containerHeight / 2])
-      .clipAngle(90)
-
-    const path = d3.geoPath().projection(projection).context(context)
-
-    const pointInPolygon = (point: [number, number], polygon: number[][]): boolean => {
-      const [x, y] = point
-      let inside = false
-
-      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const [xi, yi] = polygon[i]
-        const [xj, yj] = polygon[j]
-
-        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-          inside = !inside
-        }
+    const measure = (): boolean => {
+      let w: number
+      let h: number
+      if (fill) {
+        w = Math.max(1, Math.round(root.clientWidth))
+        h = Math.max(1, Math.round(root.clientHeight))
+        dpr = Math.min(window.devicePixelRatio || 1, 2)
+      } else {
+        w = Math.min(width, window.innerWidth - 40)
+        h = Math.min(height, window.innerHeight - 100)
+        dpr = window.devicePixelRatio || 1
       }
-
-      return inside
+      if (w === containerWidth && h === containerHeight) return false
+      const zoom = projection.scale() / radius
+      containerWidth = w
+      containerHeight = h
+      radius = fill ? Math.max(1, Math.min(w, h) / 2 - 3) : Math.min(w, h) / 2.5
+      canvas.width = Math.round(w * dpr)
+      canvas.height = Math.round(h * dpr)
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
+      projection.translate([w / 2, h / 2]).scale(radius * (Number.isFinite(zoom) && zoom > 0 ? zoom : 1))
+      return true
     }
+    projection.scale(1)
+    measure()
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pointInFeature = (point: [number, number], feature: any): boolean => {
-      const geometry = feature.geometry
+    // Dots are sized for the original 250px-ish globe; in `fill` mode they follow the globe's size.
+    const dotRadius = () => (fill ? Math.min(1.5, Math.max(0.75, radius / 230)) * 1.2 : 1.2)
 
-      if (geometry.type === "Polygon") {
-        const coordinates = geometry.coordinates
-        // Check if point is in outer ring
-        if (!pointInPolygon(point, coordinates[0])) {
-          return false
-        }
-        // Check if point is in any hole (inner rings)
-        for (let i = 1; i < coordinates.length; i++) {
-          if (pointInPolygon(point, coordinates[i])) {
-            return false // Point is in a hole
-          }
-        }
-        return true
-      } else if (geometry.type === "MultiPolygon") {
-        // Check each polygon in the MultiPolygon
-        for (const polygon of geometry.coordinates) {
-          // Check if point is in outer ring
-          if (pointInPolygon(point, polygon[0])) {
-            // Check if point is in any hole
-            let inHole = false
-            for (let i = 1; i < polygon.length; i++) {
-              if (pointInPolygon(point, polygon[i])) {
-                inHole = true
-                break
-              }
-            }
-            if (!inHole) {
-              return true
-            }
-          }
-        }
-        return false
-      }
-
-      return false
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const generateDotsInPolygon = (feature: any, dotSpacing = 16) => {
-      const dots: [number, number][] = []
-      const bounds = d3.geoBounds(feature)
-      const [[minLng, minLat], [maxLng, maxLat]] = bounds
-
-      const stepSize = dotSpacing * 0.08
-
-      for (let lng = minLng; lng <= maxLng; lng += stepSize) {
-        for (let lat = minLat; lat <= maxLat; lat += stepSize) {
-          const point: [number, number] = [lng, lat]
-          if (pointInFeature(point, feature)) {
-            dots.push(point)
-          }
-        }
-      }
-
-      return dots
-    }
-
-    interface DotData {
-      lng: number
-      lat: number
-      visible: boolean
-    }
-
-    const allDots: DotData[] = []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let landFeatures: any
+    let land: Land | null = null
+    let disposed = false
     const startedAt = performance.now()
 
-    const render = () => {
-      // Clear canvas
+    const render = (now: number) => {
+      context.setTransform(dpr, 0, 0, dpr, 0, 0)
       context.clearRect(0, 0, containerWidth, containerHeight)
 
       const currentScale = projection.scale()
       const scaleFactor = currentScale / radius
+      const [cx, cy] = projection.translate()
 
-      // Draw ocean (globe background)
+      // Ocean and rim.
       context.beginPath()
-      context.arc(containerWidth / 2, containerHeight / 2, currentScale, 0, 2 * Math.PI)
+      context.arc(cx, cy, currentScale, 0, 2 * Math.PI)
       context.fillStyle = oceanColor
       context.fill()
       context.strokeStyle = strokeColor
       context.lineWidth = 2 * scaleFactor
       context.stroke()
 
-      if (landFeatures) {
-        // Draw graticule
-        const graticule = d3.geoGraticule()
+      // Graticule.
+      context.beginPath()
+      path(graticule)
+      context.lineWidth = 1 * scaleFactor
+      context.globalAlpha = 0.25
+      context.stroke()
+      context.globalAlpha = 1
+
+      if (land) {
+        // Coastlines (clipped to the near side).
         context.beginPath()
-        path(graticule())
-        context.strokeStyle = strokeColor
+        land.collection.features.forEach((feature) => path(feature as GeoPermissibleObjects))
         context.lineWidth = 1 * scaleFactor
-        context.globalAlpha = 0.25
         context.stroke()
+
+        // Halftone dots: near side solid, far side a faint see-through ghost.
+        const [lambda0, phi0] = projection.rotate()
+        const l0 = lambda0 * RAD
+        const cosP0 = Math.cos(phi0 * RAD)
+        const sinP0 = Math.sin(phi0 * RAD)
+        const r = dotRadius() * scaleFactor
+        const front = new Path2D()
+        const back = new Path2D()
+        const { lambda, sinPhi, cosPhi } = land
+        for (let i = 0; i < lambda.length; i++) {
+          const lam = lambda[i] + l0
+          const x = cosPhi[i] * Math.cos(lam)
+          const y = cosPhi[i] * Math.sin(lam)
+          const z = sinPhi[i]
+          const px = cx + currentScale * y
+          const py = cy - currentScale * (z * cosP0 + x * sinP0)
+          if (px < 0 || px > containerWidth || py < 0 || py > containerHeight) continue
+          const target = x * cosP0 - z * sinP0 > 0 ? front : back
+          target.moveTo(px + r, py)
+          target.arc(px, py, r, 0, 2 * Math.PI)
+        }
+        context.fillStyle = dotColor
+        context.globalAlpha = 0.14
+        context.fill(back)
         context.globalAlpha = 1
-
-        // Draw land outlines
-        context.beginPath()
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        landFeatures.features.forEach((feature: any) => {
-          path(feature)
-        })
-        context.strokeStyle = strokeColor
-        context.lineWidth = 1 * scaleFactor
-        context.stroke()
-
-        // Draw halftone dots
-        allDots.forEach((dot) => {
-          const projected = projection([dot.lng, dot.lat])
-          if (
-            projected &&
-            projected[0] >= 0 &&
-            projected[0] <= containerWidth &&
-            projected[1] >= 0 &&
-            projected[1] <= containerHeight
-          ) {
-            context.beginPath()
-            context.arc(projected[0], projected[1], 1.2 * scaleFactor, 0, 2 * Math.PI)
-            context.fillStyle = dotColor
-            context.fill()
-          }
-        })
+        context.fill(front)
       }
 
-      // Pulsing marker, only while it's on the visible hemisphere.
-      if (marker) {
-        const rotate = projection.rotate()
-        const center: [number, number] = [-rotate[0], -rotate[1]]
-        if (d3.geoDistance(marker, center) < Math.PI / 2) {
-          const p = projection(marker)
-          if (p) {
-            const t = ((performance.now() - startedAt) / 1400) % 1
-            context.beginPath()
-            context.arc(p[0], p[1], (4 + t * 18) * scaleFactor, 0, 2 * Math.PI)
-            context.strokeStyle = markerColor
-            context.globalAlpha = 1 - t
-            context.lineWidth = 2 * scaleFactor
-            context.stroke()
-            context.globalAlpha = 1
-            context.beginPath()
-            context.arc(p[0], p[1], 4.5 * scaleFactor, 0, 2 * Math.PI)
-            context.fillStyle = markerColor
-            context.fill()
-          }
+      // Pulsing marker, only while it's on the near side.
+      if (markerPoint) {
+        const [lambda0, phi0] = projection.rotate()
+        const lam = (markerPoint[0] + lambda0) * RAD
+        const phi = markerPoint[1] * RAD
+        const x = Math.cos(phi) * Math.cos(lam)
+        const y = Math.cos(phi) * Math.sin(lam)
+        const z = Math.sin(phi)
+        const cosP0 = Math.cos(phi0 * RAD)
+        const sinP0 = Math.sin(phi0 * RAD)
+        if (x * cosP0 - z * sinP0 > 0) {
+          const px = cx + currentScale * y
+          const py = cy - currentScale * (z * cosP0 + x * sinP0)
+          const t = reduceMotion ? 0.35 : ((now - startedAt) / 1400) % 1
+          context.beginPath()
+          context.arc(px, py, (4 + t * 18) * scaleFactor, 0, 2 * Math.PI)
+          context.strokeStyle = markerColor
+          context.globalAlpha = 1 - t
+          context.lineWidth = 2 * scaleFactor
+          context.stroke()
+          context.globalAlpha = 1
+          context.beginPath()
+          context.arc(px, py, 4.5 * scaleFactor, 0, 2 * Math.PI)
+          context.fillStyle = markerColor
+          context.fill()
         }
       }
     }
 
-    const loadWorldData = async () => {
-      try {
-        setIsLoading(true)
-
-        const response = await fetch(
-          "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/110m/physical/ne_110m_land.json",
-        )
-        if (!response.ok) throw new Error("Failed to load land data")
-
-        landFeatures = await response.json()
-
-        // Generate dots for all land features
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        landFeatures.features.forEach((feature: any) => {
-          const dots = generateDotsInPolygon(feature, 16)
-          dots.forEach(([lng, lat]) => {
-            allDots.push({ lng, lat, visible: true })
-          })
-        })
-
-        render()
-        setIsLoading(false)
-      } catch {
-        setError("Failed to load land map data")
-        setIsLoading(false)
-      }
-    }
-
-    // Set up rotation and interaction
-    const rotation: [number, number] = [initialRotation[0], initialRotation[1]]
+    // Rotation, interaction and animation.
+    const rotation: [number, number] = [rotLambda, rotPhi]
     projection.rotate(rotation)
     let autoRotate = true
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    let dragging = false
     const rotationSpeed = reduceMotion ? 0 : speed
+    let dirty = true
+    let lastFrame = performance.now()
+    let lastRender = 0
+    let flight: {
+      start: number
+      duration: number
+      from: [number, number]
+      delta: [number, number]
+      fromScale: number
+      toScale: number
+      resolve: () => void
+    } | null = null
 
-    const rotate = () => {
-      if (autoRotate) {
-        rotation[0] += rotationSpeed
+    const tick = () => {
+      const now = performance.now()
+      const dt = Math.min(64, now - lastFrame)
+      lastFrame = now
+      if (flight) {
+        const p = flight.duration > 0 ? Math.min(1, (now - flight.start) / flight.duration) : 1
+        const e = easeInOutCubic(p)
+        rotation[0] = flight.from[0] + flight.delta[0] * e
+        rotation[1] = flight.from[1] + flight.delta[1] * e
+        projection.rotate(rotation).scale(flight.fromScale + (flight.toScale - flight.fromScale) * e)
+        dirty = true
+        if (p >= 1) {
+          const done = flight.resolve
+          flight = null
+          done()
+        }
+      } else if (autoRotate && !dragging && rotationSpeed) {
+        rotation[0] += rotationSpeed * (dt / (1000 / 60))
         projection.rotate(rotation)
+        dirty = true
       }
-      render()
+      // Idle spinning is slow, so 30 fps is plenty; interaction and flights run at full rate.
+      const busy = dragging || flight !== null
+      const pulsing = markerPoint !== null && !reduceMotion
+      if (!dirty && !pulsing) return
+      if (!busy && fill && now - lastRender < 32) return
+      lastRender = now
+      dirty = false
+      render(now)
     }
 
-    // Auto-rotation timer
-    const rotationTimer = d3.timer(rotate)
+    let rotationTimer: ReturnType<typeof timer> | null = null
+    const start = () => {
+      if (!rotationTimer && !disposed) {
+        lastFrame = performance.now()
+        rotationTimer = timer(tick)
+      }
+    }
+    const stop = () => {
+      rotationTimer?.stop()
+      rotationTimer = null
+    }
 
-    const handleMouseDown = (event: MouseEvent) => {
+    apiRef.current = {
+      flyTo(target, options = {}) {
+        return new Promise<void>((resolve) => {
+          flight?.resolve()
+          autoRotate = false
+          const to: [number, number] = [-target[0], -target[1]]
+          const dLambda = ((((to[0] - rotation[0]) % 360) + 540) % 360) - 180
+          flight = {
+            start: performance.now(),
+            duration: reduceMotion ? 0 : (options.duration ?? 900),
+            from: [rotation[0], rotation[1]],
+            delta: [dLambda, to[1] - rotation[1]],
+            fromScale: projection.scale(),
+            toScale: radius * (options.zoom ?? 1),
+            resolve,
+          }
+          start()
+        })
+      },
+    }
+
+    // Drag to rotate (mouse, pen and touch). On touch, vertical swipes still scroll the page.
+    let resumeTimer: ReturnType<typeof setTimeout> | undefined
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!draggable || event.button > 0 || flight) return
+      dragging = true
       autoRotate = false
+      clearTimeout(resumeTimer)
       const startX = event.clientX
       const startY = event.clientY
-      const startRotation = [...rotation]
+      const startRotation: [number, number] = [rotation[0], rotation[1]]
+      const sensitivity = fill ? Math.min(0.5, 90 / radius) : 0.5
+      canvas.setPointerCapture?.(event.pointerId)
 
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const sensitivity = 0.5
-        const dx = moveEvent.clientX - startX
-        const dy = moveEvent.clientY - startY
-
-        rotation[0] = startRotation[0] + dx * sensitivity
-        rotation[1] = startRotation[1] - dy * sensitivity
-        rotation[1] = Math.max(-90, Math.min(90, rotation[1]))
-
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        rotation[0] = startRotation[0] + (moveEvent.clientX - startX) * sensitivity
+        rotation[1] = Math.max(-90, Math.min(90, startRotation[1] - (moveEvent.clientY - startY) * sensitivity))
         projection.rotate(rotation)
-        render()
+        dirty = true
+        if (!rotationTimer) render(performance.now())
       }
-
-      const handleMouseUp = () => {
-        document.removeEventListener("mousemove", handleMouseMove)
-        document.removeEventListener("mouseup", handleMouseUp)
-
-        setTimeout(() => {
-          autoRotate = true
+      const handlePointerUp = () => {
+        canvas.removeEventListener("pointermove", handlePointerMove)
+        canvas.removeEventListener("pointerup", handlePointerUp)
+        canvas.removeEventListener("pointercancel", handlePointerUp)
+        dragging = false
+        resumeTimer = setTimeout(() => {
+          if (!flight) autoRotate = true
         }, 10)
       }
-
-      document.addEventListener("mousemove", handleMouseMove)
-      document.addEventListener("mouseup", handleMouseUp)
+      canvas.addEventListener("pointermove", handlePointerMove)
+      canvas.addEventListener("pointerup", handlePointerUp)
+      canvas.addEventListener("pointercancel", handlePointerUp)
     }
 
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault()
-      const scaleFactor = event.deltaY > 0 ? 0.9 : 1.1
-      const newRadius = Math.max(radius * 0.5, Math.min(radius * 3, projection.scale() * scaleFactor))
-      projection.scale(newRadius)
-      render()
+      const factor = event.deltaY > 0 ? 0.9 : 1.1
+      projection.scale(Math.max(radius * 0.5, Math.min(radius * 3, projection.scale() * factor)))
+      dirty = true
+      if (!rotationTimer) render(performance.now())
     }
 
-    canvas.addEventListener("mousedown", handleMouseDown)
-    canvas.addEventListener("wheel", handleWheel, { passive: false })
+    canvas.style.touchAction = draggable ? "pan-y" : ""
+    canvas.addEventListener("pointerdown", handlePointerDown)
+    if (zoomable) canvas.addEventListener("wheel", handleWheel, { passive: false })
 
-    // Load the world data
-    loadWorldData()
+    // Only animate while the globe is on screen.
+    let onScreen = true
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting
+      if (onScreen) start()
+      else if (!flight) stop()
+    })
+    io.observe(canvas)
 
-    // Cleanup
+    let ro: ResizeObserver | undefined
+    if (fill) {
+      ro = new ResizeObserver(() => {
+        if (measure()) render(performance.now())
+      })
+      ro.observe(root)
+    }
+
+    loadLand(dataUrl)
+      .then((loaded) => {
+        if (disposed) return
+        land = loaded
+        dirty = true
+        render(performance.now())
+        setIsLoading(false)
+      })
+      .catch(() => {
+        if (disposed) return
+        // In `fill` mode a bare wireframe globe is a better fallback than an error box.
+        if (!fill) setError("Failed to load land map data")
+        setIsLoading(false)
+      })
+
+    render(performance.now())
+    if (onScreen) start()
+
     return () => {
-      rotationTimer.stop()
-      canvas.removeEventListener("mousedown", handleMouseDown)
+      disposed = true
+      stop()
+      clearTimeout(resumeTimer)
+      flight?.resolve()
+      flight = null
+      apiRef.current = null
+      io.disconnect()
+      ro?.disconnect()
+      canvas.removeEventListener("pointerdown", handlePointerDown)
       canvas.removeEventListener("wheel", handleWheel)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height, oceanColor, strokeColor, dotColor, markerColor, speed])
+  }, [
+    width,
+    height,
+    oceanColor,
+    strokeColor,
+    dotColor,
+    markerColor,
+    speed,
+    dataUrl,
+    fill,
+    zoomable,
+    draggable,
+    markerLng,
+    markerLat,
+    rotLambda,
+    rotPhi,
+  ])
 
   if (error) {
     return (
@@ -349,11 +519,11 @@ export default function RotatingEarth({
   }
 
   return (
-    <div className={`relative ${className}`} data-loading={isLoading || undefined}>
+    <div ref={rootRef} className={`relative ${fill ? "h-full w-full" : ""} ${className}`} data-loading={isLoading || undefined}>
       <canvas
         ref={canvasRef}
-        className="w-full h-auto rounded-2xl bg-transparent dark"
-        style={{ maxWidth: "100%", height: "auto" }}
+        className={fill ? "absolute inset-0 block bg-transparent dark" : "w-full h-auto rounded-2xl bg-transparent dark"}
+        style={fill ? undefined : { maxWidth: "100%", height: "auto" }}
       />
       {showHint && (
         <div className="absolute bottom-4 left-4 text-xs text-muted-foreground px-2 py-1 rounded-md dark bg-neutral-900">
