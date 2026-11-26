@@ -90,10 +90,11 @@ export default function AccountButton() {
             .social({ provider: "google", callbackURL: window.location.pathname + window.location.search })
             .catch(() => setBusy(false));
         }}
-        className="site-tab disabled:opacity-60"
+        aria-label="Sign in with Google"
+        className="site-tab whitespace-nowrap disabled:opacity-60"
       >
         <GoogleG className="size-4" />
-        Sign in
+        <span className="hidden sm:inline">Sign in</span>
       </button>
     );
   }

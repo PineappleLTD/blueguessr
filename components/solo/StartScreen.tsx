@@ -6,7 +6,7 @@ import MapOptions from "@/components/game/MapOptions";
 import DotDunes from "./DotDunes";
 import { prefersReducedMotion } from "./hooks";
 
-const STEP_MS = 560;
+const STEP_MS = 1000;
 const LABELS = ["3", "2", "1", "Go!"];
 
 /**
