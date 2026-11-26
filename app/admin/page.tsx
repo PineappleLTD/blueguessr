@@ -6,6 +6,7 @@ import ReviewDesk from "@/components/admin/ReviewDesk";
 import Header from "@/components/site/Header";
 import { adminEnabled, isAdmin } from "@/lib/admin-auth";
 import { reviewData } from "@/lib/contributions";
+import Footer from "@/components/site/Footer";
 
 export const metadata: Metadata = {
   title: "Review | BlueGuessr",
@@ -27,6 +28,7 @@ export default function AdminPage() {
           <AdminGate />
         </Suspense>
       </main>
+      <Footer />
     </div>
   );
 }

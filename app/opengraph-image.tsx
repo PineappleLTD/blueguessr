@@ -100,7 +100,6 @@ export default function Image() {
           background: "radial-gradient(90% 80% at 50% 100%, #0d3260 0%, #071226 62%, #050c1a 100%)",
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={globe} width={1200} height={630} alt="" style={{ position: "absolute", left: 0, top: 0 }} />
         {/* Extruded wordmark: darker copies stacked under the maize face, like the landing's. */}
         <div style={{ display: "flex", position: "relative", marginTop: 104 }}>

@@ -7,6 +7,7 @@ import Dunes from "./Dunes";
 import type { RoomSync } from "./hooks";
 import type { RoomError, RoomView } from "./types";
 import VersusStyles from "./VersusStyles";
+import Footer from "@/components/site/Footer";
 
 const START_ERRORS: Partial<Record<RoomError, string>> = {
   need_players: "Need 2 players",
@@ -190,6 +191,7 @@ export default function Lobby({
 
         <Dunes className="absolute inset-x-0 bottom-0" />
       </main>
+      <Footer waves={false} solid={false} className="relative z-10" />
     </>
   );
 }

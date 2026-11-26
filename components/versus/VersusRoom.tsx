@@ -12,6 +12,7 @@ import Lobby from "./Lobby";
 import NameField, { nameOk } from "./NameField";
 import { isRoomCode, type RoomError } from "./types";
 import VersusStyles from "./VersusStyles";
+import Footer from "@/components/site/Footer";
 
 export function RoomLoading() {
   return (
@@ -135,6 +136,7 @@ function Shell({ header, children }: { header: React.ReactNode; children: React.
         {children}
         <Dunes className="absolute inset-x-0 bottom-0" />
       </main>
+      <Footer waves={false} solid={false} className="relative z-10" />
     </>
   );
 }

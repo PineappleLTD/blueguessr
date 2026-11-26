@@ -14,9 +14,9 @@ const TABS: { id: Period; label: string }[] = [
 ];
 
 const MEDALS = [
-  { ring: "#FFCB05", from: "#FFE89A", via: "#FFCB05", to: "#C98E0A", ink: "#00274C", height: "h-36 sm:h-44" },
-  { ring: "#C9D4E2", from: "#F4F7FB", via: "#C9D4E2", to: "#8696AB", ink: "#00274C", height: "h-28 sm:h-32" },
-  { ring: "#E39B5B", from: "#F6C79B", via: "#E39B5B", to: "#A35A22", ink: "#00274C", height: "h-20 sm:h-24" },
+  { ring: "#FFCB05", from: "#FFE89A", via: "#FFCB05", to: "#C98E0A", ink: "#00274C", height: "h-28 sm:h-36" },
+  { ring: "#C9D4E2", from: "#F4F7FB", via: "#C9D4E2", to: "#8696AB", ink: "#00274C", height: "h-20 sm:h-28" },
+  { ring: "#E39B5B", from: "#F6C79B", via: "#E39B5B", to: "#A35A22", ink: "#00274C", height: "h-14 sm:h-20" },
 ];
 
 // ---- tiny external stores: the local player's name and the ?period= tab ----
@@ -57,7 +57,7 @@ function Avatar({ name, ring, size = "size-14" }: { name?: string; ring: string;
 
 function Podium({ entries, me, loading }: { entries: LeaderboardEntry[]; me: string; loading: boolean }) {
   return (
-    <div className="mx-auto mt-8 grid max-w-xl grid-cols-3 items-end gap-2.5 sm:gap-4" aria-label="Top three">
+    <div className="mx-auto mt-5 grid w-full max-w-xl shrink-0 grid-cols-3 items-end gap-2.5 sm:gap-4" aria-label="Top three">
       {[1, 0, 2].map((i) => {
         const e = entries[i];
         const m = MEDALS[i];
@@ -166,10 +166,10 @@ export default function Leaderboard() {
   const meRow = data?.me && data.me.rank > entries.length ? data.me : null;
 
   return (
-    <main className="relative z-10 mx-auto w-full max-w-3xl flex-1 px-4 pb-24 sm:px-6">
-      <div className="flex flex-col items-center gap-5 pt-2 sm:pt-6">
-        <h1 className="text-display animate-pop flex items-center gap-3 text-[3.4rem] text-maize-gradient sm:text-7xl">
-          <Trophy className="size-11 text-maize sm:size-14" strokeWidth={2.2} />
+    <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pb-3 sm:px-6">
+      <div className="flex shrink-0 flex-col items-center gap-4 pt-1 sm:pt-3">
+        <h1 className="text-display animate-pop flex items-center gap-3 text-[2.8rem] text-maize-gradient sm:text-6xl">
+          <Trophy className="size-10 text-maize sm:size-12" strokeWidth={2.2} />
           Leaderboard
         </h1>
         <div className="flex items-center gap-3">
@@ -201,7 +201,7 @@ export default function Leaderboard() {
       </div>
 
       {failed && !data ? (
-        <div className="mt-14 flex flex-col items-center gap-5">
+        <div className="mt-10 flex flex-col items-center gap-5">
           <p className="text-display text-4xl text-maize-soft/80">Connection lost</p>
           <button type="button" className="btn-game" onClick={() => void load()}>
             <RotateCcw className="size-5" strokeWidth={2.6} />
@@ -213,7 +213,7 @@ export default function Leaderboard() {
           <Podium key={`podium-${period}`} entries={entries} me={me} loading={loading} />
 
           {data && entries.length === 0 && (
-            <div className="mt-10 flex flex-col items-center gap-5">
+            <div className="mt-8 flex flex-col items-center gap-5">
               <p className="text-display text-4xl text-maize-soft/80">No scores yet</p>
               <Link href="/play" className="btn-game px-10 py-4 text-3xl">
                 <Play className="size-7 fill-current" strokeWidth={2.4} />
@@ -223,8 +223,8 @@ export default function Leaderboard() {
           )}
 
           {entries.length > 3 && (
-            <ol key={`list-${period}`} className="mt-6 flex flex-col gap-2" aria-label="Rankings">
-              <li className="grid grid-cols-[2.6rem_minmax(0,1fr)_2.6rem_2.6rem_4.6rem] gap-2 px-3 text-xs font-bold tracking-wider text-foreground/45 uppercase sm:grid-cols-[3rem_minmax(0,1fr)_4rem_4rem_6rem] sm:px-4">
+            <div key={`list-${period}`} className="mt-5 flex min-h-0 flex-1 flex-col gap-2">
+              <div className="grid shrink-0 grid-cols-[2.6rem_minmax(0,1fr)_2.6rem_2.6rem_4.6rem] gap-2 px-3 text-xs font-bold tracking-wider text-foreground/45 uppercase sm:grid-cols-[3rem_minmax(0,1fr)_4rem_4rem_6rem] sm:px-4">
                 <span>#</span>
                 <span>Player</span>
                 <span className="flex justify-end" title="Bullseyes">
@@ -234,22 +234,28 @@ export default function Leaderboard() {
                   <Gamepad2 className="size-3.5" strokeWidth={2.4} aria-label="Games" />
                 </span>
                 <span className="text-right">Best</span>
-              </li>
-              {entries.slice(3).map((e, i) => (
-                <Row key={e.rank} e={e} me={me} delay={Math.min(i, 12) * 40 + 500} />
-              ))}
-            </ol>
+              </div>
+              {/* Only the rankings scroll, so the page itself always fits the screen. */}
+              <ol
+                className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 [scrollbar-color:var(--maize)_transparent] [scrollbar-width:thin]"
+                aria-label="Rankings"
+              >
+                {entries.slice(3).map((e, i) => (
+                  <Row key={e.rank} e={e} me={me} delay={Math.min(i, 12) * 40 + 500} />
+                ))}
+              </ol>
+            </div>
           )}
 
           {meRow && (
-            <ol className="mt-4 border-t border-dashed border-maize/25 pt-4" aria-label="Your rank">
+            <ol className="mt-3 shrink-0 border-t border-dashed border-maize/25 pt-3" aria-label="Your rank">
               <Row e={meRow} me={me} delay={600} />
             </ol>
           )}
 
           {entries.length > 0 && (
-            <div className="mt-10 flex justify-center">
-              <Link href="/play" className="btn-game px-10 py-4 text-3xl">
+            <div className="mt-4 flex shrink-0 justify-center">
+              <Link href="/play" className="btn-game px-9 py-3 text-2xl">
                 <Play className="size-7 fill-current" strokeWidth={2.4} />
                 Play
               </Link>

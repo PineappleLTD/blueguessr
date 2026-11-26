@@ -14,6 +14,7 @@ import { fmt, useCountUp, useElapsed, useIsWide } from "./hooks";
 import SubmitScore from "./SubmitScore";
 import SummaryMap, { type SummaryRound } from "./SummaryMap";
 import { tierFor, type Tier } from "./tiers";
+import Footer from "@/components/site/Footer";
 
 const COUNT_MS = 1700;
 
@@ -167,6 +168,7 @@ export default function Summary({
 
         {wide && <div className="sticky top-4 h-[calc(100dvh-2rem)] max-h-[860px] min-h-[520px]">{map}</div>}
       </main>
+      <Footer waves={false} solid={false} className="relative z-10 mt-auto" />
     </div>
   );
 }
