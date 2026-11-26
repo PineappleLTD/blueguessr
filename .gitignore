@@ -42,3 +42,6 @@ next-env.d.ts
 
 !.env.example
 .claude/settings.local.json
+
+# copied from node_modules by postinstall
+/public/maplibre-gl-worker.mjs
