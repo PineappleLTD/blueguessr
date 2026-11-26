@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import AccountButton from "./AccountButton";
 import HeaderNav from "./HeaderNav";
 import { MenuButtonPlaceholder, NavList } from "./NavList";
 
@@ -21,16 +22,19 @@ export default function Header({ className = "" }: { className?: string }) {
         <span className="text-display text-[1.75rem] text-maize-gradient">BlueGuessr</span>
       </Link>
       {/* The active tab reads the URL, which can suspend on dynamic routes: keep the rest static. */}
-      <Suspense
-        fallback={
-          <>
-            <NavList pathname={null} />
-            <MenuButtonPlaceholder />
-          </>
-        }
-      >
-        <HeaderNav />
-      </Suspense>
+      <div className="flex items-center gap-1.5">
+        <Suspense
+          fallback={
+            <>
+              <NavList pathname={null} />
+              <MenuButtonPlaceholder />
+            </>
+          }
+        >
+          <HeaderNav />
+        </Suspense>
+        <AccountButton />
+      </div>
     </header>
   );
 }

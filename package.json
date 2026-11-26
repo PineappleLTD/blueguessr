@@ -22,6 +22,7 @@
     "@mediapipe/tasks-vision": "^1.2.3",
     "@upstash/redis": "^1.41.1",
     "@vercel/blob": "^2.9.0",
+    "better-auth": "^1.7.28",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "d3": "^7.9.2",

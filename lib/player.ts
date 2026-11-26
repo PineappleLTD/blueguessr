@@ -1,7 +1,8 @@
 "use client";
 
 // The player's local identity: a random id (kept secret, proves you own your name)
-// and a display name. Stored in localStorage; no accounts.
+// and a display name. Stored in localStorage. Signing in links it to an account, which
+// can swap in the account's identity on a new device (components/site/AccountButton.tsx).
 
 export interface LocalPlayer {
   id: string;
@@ -36,4 +37,14 @@ export function setPlayerName(name: string): LocalPlayer {
   const p = { ...getPlayer(), name: name.trim().slice(0, NAME_MAX) };
   localStorage.setItem(KEY, JSON.stringify(p));
   return p;
+}
+
+/** Switches this device to another identity (the one a signed-in account carries). */
+export function replacePlayer(p: LocalPlayer): void {
+  localStorage.setItem(KEY, JSON.stringify({ id: p.id, name: p.name.trim().slice(0, NAME_MAX) }));
+}
+
+/** Forgets this device's identity (on sign-out), so the next visit starts as a fresh guest. */
+export function resetPlayer(): void {
+  localStorage.removeItem(KEY);
 }
