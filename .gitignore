@@ -51,3 +51,6 @@ next-env.d.ts
 
 # player photo uploads in local development (lib/uploads.ts)
 /public/_dev-uploads/
+
+# photo pipeline caches (raw API responses, contact sheets)
+/.cache/
