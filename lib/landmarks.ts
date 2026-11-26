@@ -1,7 +1,3 @@
-"use client";
-
-import { useSyncExternalStore } from "react";
-
 /**
  * Big, well-known buildings labeled on the guess map so players have something to aim from.
  * Coordinates are building centroids from OpenStreetMap. Lower `rank` wins when labels collide.
@@ -27,45 +23,3 @@ export const LANDMARKS_GEOJSON: GeoJSON.FeatureCollection = {
     geometry: { type: "Point", coordinates: [l.lng, l.lat] },
   })),
 };
-
-// The on/off choice is saved on this device and shared by every map (solo and versus).
-const KEY = "blueguessr:landmarks";
-const EVENT = "blueguessr:landmarks";
-
-function subscribe(onChange: () => void) {
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) onChange();
-  };
-  window.addEventListener("storage", onStorage);
-  window.addEventListener(EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onStorage);
-    window.removeEventListener(EVENT, onChange);
-  };
-}
-
-// Used when localStorage is unavailable (some private modes): the choice lasts until reload.
-let fallback: boolean | null = null;
-
-function read(): boolean {
-  if (fallback !== null) return fallback;
-  try {
-    return localStorage.getItem(KEY) !== "0";
-  } catch {
-    return true;
-  }
-}
-
-export function setLandmarksOn(on: boolean) {
-  try {
-    localStorage.setItem(KEY, on ? "1" : "0");
-  } catch {
-    fallback = on;
-  }
-  window.dispatchEvent(new Event(EVENT));
-}
-
-/** Whether landmark labels are on (default: on). */
-export function useLandmarksOn(): boolean {
-  return useSyncExternalStore(subscribe, read, () => true);
-}

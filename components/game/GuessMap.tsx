@@ -5,7 +5,9 @@ import type { Map as MLMap, Marker as MLMarker, GeoJSONSource } from "maplibre-g
 import { useEffect, useRef, useState } from "react";
 import { CAMPUS } from "@/lib/campus";
 import { bounds, CAMPUS_FALLBACK_BOUNDS } from "@/lib/geo";
-import { LANDMARKS_GEOJSON, setLandmarksOn, useLandmarksOn } from "@/lib/landmarks";
+import { LANDMARKS_GEOJSON } from "@/lib/landmarks";
+import { useMapSetting } from "@/lib/map-settings";
+import MapOptions from "./MapOptions";
 import type { LngLat } from "@/lib/types";
 
 export const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -36,7 +38,7 @@ export interface GuessMapProps {
   guessColor?: string;
   /** Change this (e.g. the round number) to reset the view to the whole campus. */
   resetKey?: string | number;
-  /** Show the Landmarks checkbox in the map's top-right corner (default true). */
+  /** Show the Landmarks and Map labels checkboxes in the map's top-right corner (default true). */
   landmarkToggle?: boolean;
   className?: string;
 }
@@ -106,8 +108,12 @@ export default function GuessMap({
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<MLMarker[]>([]);
   const markerCtor = useRef<typeof MLMarker | null>(null);
-  const landmarksOn = useLandmarksOn();
+  const landmarksOn = useMapSetting("landmarks");
+  const labelsOn = useMapSetting("labels");
   const landmarksOnRef = useRef(landmarksOn);
+  const labelsOnRef = useRef(labelsOn);
+  /** The base style's own text layers (streets, stops, places), switched by "Map labels". */
+  const baseLabelIds = useRef<string[]>([]);
   /** True while the view should stay fitted to campus (until a reveal or a user pan/zoom). */
   const showCampus = useRef(true);
   const onGuessRef = useRef(onGuess);
@@ -146,7 +152,10 @@ export default function GuessMap({
 
       map.on("load", () => {
         if (cancelled) return;
-        const firstSymbol = map.getStyle().layers?.find((l) => l.type === "symbol")?.id;
+        const baseSymbols = (map.getStyle().layers ?? []).filter((l) => l.type === "symbol").map((l) => l.id);
+        baseLabelIds.current = baseSymbols;
+        if (!labelsOnRef.current) for (const id of baseSymbols) map.setLayoutProperty(id, "visibility", "none");
+        const firstSymbol = baseSymbols[0];
         map.addSource("campus", { type: "geojson", data: CAMPUS as unknown as GeoJSON.FeatureCollection });
         map.addLayer(
           { id: "campus-fill", type: "fill", source: "campus", paint: { "fill-color": MAIZE, "fill-opacity": 0.1 } },
@@ -240,6 +249,13 @@ export default function GuessMap({
     for (const id of ["landmark-dots", "landmark-labels"]) map.setLayoutProperty(id, "visibility", landmarksOn ? "visible" : "none");
   }, [landmarksOn, ready]);
 
+  useEffect(() => {
+    labelsOnRef.current = labelsOn;
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const id of baseLabelIds.current) map.setLayoutProperty(id, "visibility", labelsOn ? "visible" : "none");
+  }, [labelsOn, ready]);
+
   // Cursor shows whether clicks do anything.
   useEffect(() => {
     const canvas = mapRef.current?.getCanvas();
@@ -309,17 +325,7 @@ export default function GuessMap({
   return (
     <div className={`relative h-full w-full ${className}`}>
       <div ref={containerRef} className="h-full w-full" />
-      {landmarkToggle && (
-        <label className="absolute top-2 right-2 z-10 flex h-8 cursor-pointer items-center gap-1.5 rounded-xl border border-maize/30 bg-night/80 px-2.5 text-xs font-bold tracking-wide text-maize uppercase backdrop-blur select-none hover:bg-mblue">
-          <input
-            type="checkbox"
-            checked={landmarksOn}
-            onChange={(e) => setLandmarksOn(e.target.checked)}
-            className="size-3.5 accent-maize"
-          />
-          Landmarks
-        </label>
-      )}
+      {landmarkToggle && <MapOptions className="absolute top-2 right-2 z-10" />}
     </div>
   );
 }

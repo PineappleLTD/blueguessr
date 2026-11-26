@@ -233,6 +233,7 @@
   text-transform: uppercase;
   letter-spacing: -0.01em;
   line-height: 0.9;
+  user-select: none;
 }
 
 /* Maize -> gold gradient text. */
@@ -241,6 +242,14 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  user-select: none;
+}
+
+/* Gradient-filled game text can't be highlighted cleanly, so it isn't selectable (above and
+   .lp-title); everything else gets a maize highlight. */
+::selection {
+  background: var(--maize);
+  color: var(--night);
 }
 
 @keyframes bg-float {
@@ -471,6 +480,7 @@
 }
 
 .lp-title {
+  user-select: none;
   margin: 0;
   font-size: clamp(3.5rem, min(16.5vw, 21svh), 12.5rem);
   line-height: 1;
