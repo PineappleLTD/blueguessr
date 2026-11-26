@@ -30,6 +30,8 @@ export interface Candidate {
   /** Mapillary sequence id. */
   sequence?: string;
   creatorId?: string;
+  /** Mapillary sequence captured at walking speed (reaches quads and paths, not just roads). */
+  onFoot?: boolean;
 }
 
 export interface Rejection {

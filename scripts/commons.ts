@@ -253,6 +253,21 @@ function fileTitle(title: string): string {
   return title.replace(/^File:/, "").replace(/\.[a-z0-9]+$/i, "");
 }
 
+/**
+ * Titles that usually mean a poor game photo (interiors, details, events, elevated views).
+ * Only lowers a file's priority in photos:build; the visual review makes the actual call.
+ */
+const UNLIKELY =
+  /\b(interior|inside|lobby|atrium|hallway|corridor|classroom|lecture|ceiling|stair(s|case|well)?|plaque|marker|sign|signage|logo|seal|statue|sculpture|bust|mural|painting|stained|detail|close[- ]?up|exhibit|exhibition|display|gallery|organ|concert|performance|game|crowd|rally|protest|march|commencement|graduation|portrait|students|team|band|parade|aerial|from above|view from|rooftop|roof|night|food|book|manuscript|construction|demolition|art fair|festival|car show|ceremony)\b/i;
+
+function priority(title: string, objectName: string, camera: boolean, width: number, year: number | null): number {
+  let q = camera ? 0.6 : 0.45;
+  if (UNLIKELY.test(`${title} ${objectName}`)) q -= 0.35;
+  if (width >= 3000) q += 0.05;
+  if (year !== null && year >= 2015) q += 0.05;
+  return Math.max(0, Math.min(1, q));
+}
+
 function parseYear(s: string | undefined): number | null {
   const m = s && stripHtml(s).match(/\b(1[89]\d\d|20\d\d)\b/);
   return m ? Number(m[1]) : null;
@@ -349,7 +364,7 @@ async function main() {
         licenseUrl: lic.license.url,
         sourceUrl: ii.descriptionurl,
         capturedAt: parseDate(meta.DateTimeOriginal),
-        quality: pos.type === "camera" ? 0.6 : 0.4,
+        quality: priority(title, stripHtml(meta.ObjectName ?? ""), pos.type === "camera", ii.width, year),
       });
     }
   }

@@ -4,10 +4,11 @@
 //   npm run photos:mapillary -- --refresh (re-download the cached API tiles)
 //
 // All Mapillary imagery is CC BY-SA 4.0; the credit is the uploader's Mapillary username.
-// We query the Graph API v4 in ~0.004° tiles over the campus (subdividing tiles that hit the result cap),
+// We query the Graph API v4 in ~0.004° tiles over the campus (subdividing dense tiles),
 // keep non-panoramic landscape photos taken inside the campus polygons, and leave picking to build.ts.
 import fs from "node:fs";
 import { areaAt, campusBBox, loadCampus, type CampusFeature } from "./lib/campus";
+import { haversine } from "./lib/geo";
 import { MAPILLARY_LICENSE, MAPILLARY_LICENSE_URL, mapillaryUrl, type Candidate } from "./lib/photos";
 import { CACHE_DIR, cachePath, countBy, fetchWithRetry, getEnv, parseArgs, readJson, sleep, writeJson } from "./lib/util";
 
@@ -34,6 +35,13 @@ const SPLIT_AT = 400;
 const TILE = 0.004;
 const MIN_WIDTH = 1600;
 const MIN_DATE = Date.UTC(2015, 0, 1);
+/**
+ * Uploaders whose dashcams burn the date and GPS coordinates into every frame (checked by sampling
+ * images from each of their sequences). The overlay would give the answer away, so skip them entirely.
+ */
+const STAMPED_UPLOADERS = new Set(["aHS", "networklanman"]);
+/** Median speed between consecutive frames below this (m/s) means the sequence was captured on foot. */
+const WALKING_MPS = 2.5;
 
 interface MapillaryImage {
   id: string;
@@ -120,6 +128,7 @@ async function main() {
     if (++done % 20 === 0) console.log(`  ${done}/${tiles.length} tiles, ${byId.size} images`);
   }
   console.log(`${byId.size} images in the tiles`);
+  const onFoot = walkingSequences([...byId.values()]);
 
   const skipped: string[] = [];
   const candidates: Candidate[] = [];
@@ -138,9 +147,11 @@ async function main() {
               ? "before 2015"
               : !img.creator?.username
                 ? "no username"
-                : !img.thumb_2048_url
-                  ? "no image url"
-                  : null;
+                : STAMPED_UPLOADERS.has(img.creator.username)
+                  ? "date/GPS burned into image"
+                  : !img.thumb_2048_url
+                    ? "no image url"
+                    : null;
     if (reason) {
       skipped.push(reason);
       continue;
@@ -162,6 +173,7 @@ async function main() {
       quality: img.quality_score,
       sequence: img.sequence,
       creatorId: img.creator!.id,
+      onFoot: !!img.sequence && onFoot.has(img.sequence),
     });
   }
   candidates.sort((a, b) => a.sourceId.localeCompare(b.sourceId));
@@ -170,7 +182,28 @@ async function main() {
   console.log("Skipped:", countBy(skipped, (s) => s));
   console.log(`Candidates: ${candidates.length}`, countBy(candidates, (c) => c.area));
   console.log("By year:", countBy(candidates, (c) => c.capturedAt!.slice(0, 4)));
+  console.log(`On foot: ${candidates.filter((c) => c.onFoot).length}`);
   console.log(`Sequences: ${new Set(candidates.map((c) => c.sequence)).size}, creators: ${new Set(candidates.map((c) => c.author)).size}`);
+}
+
+/** Sequences whose median speed between consecutive frames is walking pace. */
+function walkingSequences(images: MapillaryImage[]): Set<string> {
+  const bySeq = new Map<string, MapillaryImage[]>();
+  for (const img of images) if (img.sequence && img.captured_at) bySeq.set(img.sequence, [...(bySeq.get(img.sequence) ?? []), img]);
+  const out = new Set<string>();
+  for (const [seq, list] of bySeq) {
+    list.sort((a, b) => a.captured_at! - b.captured_at!);
+    const speeds: number[] = [];
+    for (let i = 1; i < list.length; i++) {
+      const dt = (list[i].captured_at! - list[i - 1].captured_at!) / 1000;
+      const a = list[i - 1].computed_geometry?.coordinates ?? list[i - 1].geometry?.coordinates;
+      const b = list[i].computed_geometry?.coordinates ?? list[i].geometry?.coordinates;
+      if (a && b && dt > 0.3 && dt < 60) speeds.push(haversine(a[1], a[0], b[1], b[0]) / dt);
+    }
+    speeds.sort((x, y) => x - y);
+    if (speeds.length && speeds[Math.floor(speeds.length / 2)] < WALKING_MPS) out.add(seq);
+  }
+  return out;
 }
 
 main().catch((err) => {
