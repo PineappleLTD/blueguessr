@@ -495,6 +495,21 @@
     "area": "athletic"
   },
   {
+    "id": "73iawmzkmzjt",
+    "src": "/photos/73iawmzkmzjt.webp",
+    "width": 1600,
+    "height": 1200,
+    "lat": 42.274372,
+    "lng": -83.738161,
+    "source": "commons",
+    "author": "Michael Barera",
+    "title": "University of Michigan August 2013 223 (Law Quadrangle)",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:University_of_Michigan_August_2013_223_(Law_Quadrangle).jpg",
+    "area": "central"
+  },
+  {
     "id": "73stkrngzwp1",
     "src": "/photos/73stkrngzwp1.webp",
     "width": 1600,
@@ -566,6 +581,21 @@
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:University_of_Michigan_August_2013_247_(Administrative_Services_Facilities_Services_A).jpg",
     "area": "athletic"
+  },
+  {
+    "id": "7nf5t825b1s5",
+    "src": "/photos/7nf5t825b1s5.webp",
+    "width": 1600,
+    "height": 1200,
+    "lat": 42.281522,
+    "lng": -83.734364,
+    "source": "commons",
+    "author": "Michael Barera",
+    "title": "University of Michigan August 2013 093 (A. Alfred Taubman Biomedical Science Research Building)",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:University_of_Michigan_August_2013_093_(A._Alfred_Taubman_Biomedical_Science_Research_Building).jpg",
+    "area": "central"
   },
   {
     "id": "7o140uxulah8",
@@ -680,6 +710,21 @@
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:University_of_Michigan_August_2013_084_(Victor_Vaughan_Building).jpg",
     "area": "medical"
+  },
+  {
+    "id": "9abs4qy5ys4l",
+    "src": "/photos/9abs4qy5ys4l.webp",
+    "width": 1600,
+    "height": 1200,
+    "lat": 42.277578,
+    "lng": -83.734564,
+    "source": "commons",
+    "author": "Michael Barera",
+    "title": "University of Michigan August 2013 167 (College of Pharmacy)",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:University_of_Michigan_August_2013_167_(College_of_Pharmacy).jpg",
+    "area": "central"
   },
   {
     "id": "9vqpfqgmq2yp",
@@ -1634,6 +1679,20 @@
     "area": "central"
   },
   {
+    "id": "l4mbqvogizz0",
+    "src": "/photos/l4mbqvogizz0.webp",
+    "width": 1600,
+    "height": 1200,
+    "lat": 42.274248,
+    "lng": -83.742885,
+    "source": "mapillary",
+    "author": "plumgarden",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "sourceUrl": "https://www.mapillary.com/app/?pKey=136404301807633",
+    "area": "central"
+  },
+  {
     "id": "lb0p966h0x7q",
     "src": "/photos/lb0p966h0x7q.webp",
     "width": 1600,
@@ -1820,6 +1879,21 @@
     "area": "north"
   },
   {
+    "id": "nm0awk5y84f5",
+    "src": "/photos/nm0awk5y84f5.webp",
+    "width": 1600,
+    "height": 1200,
+    "lat": 42.279081,
+    "lng": -83.738219,
+    "source": "commons",
+    "author": "w_lemay",
+    "title": "Michigan League Building, University of Michigan, University Avenue, Ann Arbor, MI - 54381367824",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Michigan_League_Building,_University_of_Michigan,_University_Avenue,_Ann_Arbor,_MI_-_54381367824.jpg",
+    "area": "central"
+  },
+  {
     "id": "nna7dc2nru6m",
     "src": "/photos/nna7dc2nru6m.webp",
     "width": 1600,
@@ -1861,6 +1935,20 @@
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
     "sourceUrl": "https://www.mapillary.com/app/?pKey=2721484038022552",
     "area": "north"
+  },
+  {
+    "id": "o5ptw5ujwk8m",
+    "src": "/photos/o5ptw5ujwk8m.webp",
+    "width": 1600,
+    "height": 1200,
+    "lat": 42.272039,
+    "lng": -83.735835,
+    "source": "mapillary",
+    "author": "plumgarden",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "sourceUrl": "https://www.mapillary.com/app/?pKey=515431282813610",
+    "area": "central"
   },
   {
     "id": "ogva8hogg65q",
@@ -2167,6 +2255,21 @@
     "area": "central"
   },
   {
+    "id": "sdh67loyx8ok",
+    "src": "/photos/sdh67loyx8ok.webp",
+    "width": 1600,
+    "height": 1067,
+    "lat": 42.264561,
+    "lng": -83.747364,
+    "source": "commons",
+    "author": "Dwight Burdette",
+    "title": "Circle of Champions Colonnade Michigan Stadium",
+    "license": "CC BY 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Circle_of_Champions_Colonnade_Michigan_Stadium.JPG",
+    "area": "athletic"
+  },
+  {
     "id": "t5ro5a5uft5x",
     "src": "/photos/t5ro5a5uft5x.webp",
     "width": 1600,
@@ -2449,20 +2552,6 @@
     "license": "CC BY-SA 4.0",
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
     "sourceUrl": "https://www.mapillary.com/app/?pKey=463604034632006",
-    "area": "central"
-  },
-  {
-    "id": "w59z5dlaygbo",
-    "src": "/photos/w59z5dlaygbo.webp",
-    "width": 1600,
-    "height": 1200,
-    "lat": 42.272068,
-    "lng": -83.737061,
-    "source": "mapillary",
-    "author": "plumgarden",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
-    "sourceUrl": "https://www.mapillary.com/app/?pKey=476079407145094",
     "area": "central"
   },
   {

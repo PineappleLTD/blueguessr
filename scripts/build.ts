@@ -264,7 +264,11 @@ async function main() {
       (c.sequence && blockedSeqs.has(c.sequence)) ||
       (c.source === "commons" && blockedSessions.some((s) => sameSession(s, c))) ||
       blockedSpots.some((s) => haversine(s.lat, s.lng, c.lat, c.lng) < BLOCK_SPOT_RADIUS_M);
-    const pool = pools.filter((c) => !used.has(sourceKey(c.source, c.sourceId)) && areaAt(campus, c.lat, c.lng) === c.area && !blocked(c));
+    // Check the area at the rounded point that photos.json will store, so a photo on a polygon edge
+    // is not picked now and dropped as "outside campus" on the next run.
+    const pool = pools.filter(
+      (c) => !used.has(sourceKey(c.source, c.sourceId)) && areaAt(campus, roundCoord(c.lat), roundCoord(c.lng)) === c.area && !blocked(c),
+    );
     const toPicked = (list: Photo[]): Picked[] =>
       list.map((p) => {
         const key = photoSourceKey(p) ?? "";

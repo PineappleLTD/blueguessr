@@ -588,6 +588,14 @@
   },
   {
     "source": "commons",
+    "sourceId": "File:Dave Barger profile 2010.JPG",
+    "id": "k9cp2dbqdsdg",
+    "reason": "people",
+    "note": "portrait of a person",
+    "by": "review"
+  },
+  {
+    "source": "commons",
     "sourceId": "File:Dick Devos 2010.jpg",
     "id": "k2g6dpo9w4zl",
     "reason": "people",
@@ -1304,6 +1312,13 @@
     "reason": "restrictions",
     "note": "personality",
     "by": "auto"
+  },
+  {
+    "source": "commons",
+    "sourceId": "File:Inside the University of Michigan A. Alfred Taubman Biomedical Science Research Building.jpg",
+    "id": "nkdkxzy0txb4",
+    "reason": "interior",
+    "by": "review"
   },
   {
     "source": "commons",
@@ -5836,6 +5851,14 @@
   },
   {
     "source": "commons",
+    "sourceId": "File:SSW Building MG 4355.jpg",
+    "id": "fzw092w0ns7v",
+    "reason": "elevated",
+    "note": "looking down from a high window",
+    "by": "review"
+  },
+  {
+    "source": "commons",
     "sourceId": "File:Steve Kampfer.JPG",
     "reason": "restrictions",
     "note": "personality",
@@ -6640,6 +6663,14 @@
   },
   {
     "source": "commons",
+    "sourceId": "File:University of Michigan August 2013 094 (Kahn Auditorium).jpg",
+    "id": "j3kdlgchnkz7",
+    "reason": "duplicate",
+    "note": "same view as a kept photo nearby",
+    "by": "review"
+  },
+  {
+    "source": "commons",
     "sourceId": "File:University of Michigan August 2013 105 (Mosher-Jordan Halls).jpg",
     "id": "ra7pcb5dsum2",
     "reason": "duplicate",
@@ -6651,6 +6682,14 @@
     "reason": "restrictions",
     "note": "personality",
     "by": "auto"
+  },
+  {
+    "source": "commons",
+    "sourceId": "File:University of Michigan August 2013 134 (Power Plant).jpg",
+    "id": "ysvztmqwp17i",
+    "reason": "duplicate",
+    "note": "same view as a kept photo nearby",
+    "by": "review"
   },
   {
     "source": "commons",
@@ -6735,6 +6774,14 @@
     "id": "e4dv86rrt9m0",
     "reason": "clutter",
     "note": "construction fence fills the foreground",
+    "by": "review"
+  },
+  {
+    "source": "commons",
+    "sourceId": "File:University of Michigan August 2013 275 (Ferry Field).jpg",
+    "id": "c6gzjvnlezj5",
+    "reason": "duplicate",
+    "note": "same view as a kept photo nearby",
     "by": "review"
   },
   {
@@ -7737,6 +7784,14 @@
   },
   {
     "source": "mapillary",
+    "sourceId": "295307845412763",
+    "id": "bviifo9r8s6h",
+    "reason": "interior",
+    "note": "inside a parking garage",
+    "by": "review"
+  },
+  {
+    "source": "mapillary",
     "sourceId": "301931484725758",
     "id": "1wdurt5oygyx",
     "reason": "nondescript",
@@ -7854,6 +7909,14 @@
   },
   {
     "source": "mapillary",
+    "sourceId": "495739281846979",
+    "id": "d3it766k8653",
+    "reason": "vehicle",
+    "note": "windshield reflections",
+    "by": "review"
+  },
+  {
+    "source": "mapillary",
     "sourceId": "496526271474344",
     "id": "wnoavvxsue7r",
     "reason": "vehicle",
@@ -7933,6 +7996,14 @@
   },
   {
     "source": "mapillary",
+    "sourceId": "804934310410278",
+    "id": "g4vdqt7ru6iv",
+    "reason": "duplicate",
+    "note": "same view as a kept photo nearby",
+    "by": "review"
+  },
+  {
+    "source": "mapillary",
     "sourceId": "820360388860717",
     "id": "jhnpt9jtrd1f",
     "reason": "nondescript",
@@ -7952,6 +8023,14 @@
     "id": "qcevejuvw31l",
     "reason": "nondescript",
     "note": "bare road or trees, nothing to place it by",
+    "by": "review"
+  },
+  {
+    "source": "mapillary",
+    "sourceId": "847489839177640",
+    "id": "9pl1kkkj5agt",
+    "reason": "nondescript",
+    "note": "bare road, nothing to place it by",
     "by": "review"
   },
   {
