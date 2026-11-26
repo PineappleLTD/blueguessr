@@ -3,7 +3,10 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react"
 import { geoBounds, geoGraticule, geoOrthographic, geoPath, timer, type GeoPermissibleObjects } from "d3"
 
-/** Natural Earth 110m land polygons (public domain). Pass `dataUrl` to use a self-hosted copy. */
+/**
+ * Natural Earth 110m land polygons (public domain). Pass `dataUrl` to use a self-hosted copy; features with
+ * `properties.lake: true` in it are drawn as outlines with no dots (public/geo adds the Great Lakes this way).
+ */
 const DEFAULT_DATA_URL =
   "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/110m/physical/ne_110m_land.json"
 
@@ -89,12 +92,13 @@ const pointInFeature = (point: [number, number], feature: any): boolean => {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const generateDotsInFeature = (feature: any, out: number[], dotSpacing = 16) => {
+const generateDotsInFeature = (feature: any, out: number[], lakes: any[] = [], dotSpacing = 16) => {
   const [[minLng, minLat], [maxLng, maxLat]] = geoBounds(feature)
   const stepSize = dotSpacing * 0.08
   for (let lng = minLng; lng <= maxLng; lng += stepSize) {
     for (let lat = minLat; lat <= maxLat; lat += stepSize) {
-      if (pointInFeature([lng, lat], feature)) out.push(lng, lat)
+      const point: [number, number] = [lng, lat]
+      if (pointInFeature(point, feature) && !lakes.some((lake) => pointInFeature(point, lake))) out.push(lng, lat)
     }
   }
 }
@@ -109,7 +113,13 @@ function loadLand(url: string): Promise<Land> {
       })
       .then((collection) => {
         const lngLat: number[] = []
-        collection.features.forEach((feature) => generateDotsInFeature(feature, lngLat))
+        // Features flagged `lake` (the Great Lakes in the self-hosted copy) get an outline but no dots.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const isLake = (feature: any) => feature.properties?.lake === true
+        const lakes = collection.features.filter(isLake)
+        collection.features.forEach((feature) => {
+          if (!isLake(feature)) generateDotsInFeature(feature, lngLat, lakes)
+        })
         const n = lngLat.length / 2
         const lambda = new Float32Array(n)
         const sinPhi = new Float32Array(n)
