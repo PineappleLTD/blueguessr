@@ -15,7 +15,9 @@ export interface Photo {
   source: PhotoSource;
   /** Credited name: Mapillary username, Commons author, or BlueGuessr username. */
   author: string;
-  /** Short license name, e.g. "CC BY-SA 4.0". */
+  /** Title of the work, when the source gives one (CC BY 2.0/3.0 attribution asks for it). */
+  title?: string;
+  /** Short license name, e.g. "CC BY-SA 4.0", "CC0 1.0", "Public domain". */
   license: string;
   licenseUrl: string;
   /** Original page. Only ever sent to the browser after the round is guessed. */
@@ -38,6 +40,7 @@ export interface RoundReveal {
   lat: number;
   lng: number;
   author: string;
+  title?: string;
   license: string;
   licenseUrl: string;
   sourceUrl?: string;
