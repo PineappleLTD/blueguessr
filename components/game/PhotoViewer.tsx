@@ -45,7 +45,11 @@ export default function PhotoViewer({ photo, className = "" }: { photo: RoundPho
     if (!box) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15);
+      // Follow how far the wheel or trackpad actually moved: a trackpad sends dozens of small
+      // events per swipe, so a fixed step per event zooms far too fast. One mouse notch ≈ 1.1×.
+      const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+      const step = Math.max(-0.12, Math.min(0.12, -px * 0.001));
+      if (step !== 0) zoomBy(Math.exp(step));
     };
     box.addEventListener("wheel", onWheel, { passive: false });
     return () => box.removeEventListener("wheel", onWheel);

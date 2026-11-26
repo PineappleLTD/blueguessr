@@ -39,10 +39,14 @@ export interface GuessMapProps {
 }
 
 const campusBounds = bounds(CAMPUS) ?? CAMPUS_FALLBACK_BOUNDS;
-const PAD = 0.025; // degrees of slack around campus you can pan into
+// How far past campus you can pan or zoom out: about 13 km each way, which takes in all of
+// Ann Arbor plus Ypsilanti and Dexter. Loose enough not to feel boxed in, tight enough that
+// the map can't wander off to Detroit.
+const PAD_LAT = 0.12;
+const PAD_LNG = 0.16;
 const maxBounds: [[number, number], [number, number]] = [
-  [campusBounds[0][0] - PAD, campusBounds[0][1] - PAD],
-  [campusBounds[1][0] + PAD, campusBounds[1][1] + PAD],
+  [campusBounds[0][0] - PAD_LNG, campusBounds[0][1] - PAD_LAT],
+  [campusBounds[1][0] + PAD_LNG, campusBounds[1][1] + PAD_LAT],
 ];
 
 function pinElement(color: string, label?: string): HTMLElement {
@@ -127,6 +131,9 @@ export default function GuessMap({
         touchPitch: false,
       });
       map.touchZoomRotate.disableRotation();
+      // Half MapLibre's default scroll-zoom speed (mouse wheel and trackpad).
+      map.scrollZoom.setWheelZoomRate(1 / 900);
+      map.scrollZoom.setZoomRate(1 / 200);
       mapRef.current = map;
 
       map.on("load", () => {
