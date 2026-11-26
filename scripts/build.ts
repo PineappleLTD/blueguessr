@@ -2,11 +2,13 @@
 //
 //   npm run photos:build
 //   npm run photos:build -- --dry-run            (show what would be picked, download nothing)
-//   npm run photos:build -- --central 72 --north 56 --medical 35 --athletic 36 --other 6
+//   npm run photos:build -- --limit 25          (add at most 25 new photos this run, for review in batches)
+//   npm run photos:build -- --central 80 --athletic 60   (cap an area)
 //
 // Re-runnable: photos already in data/photos.json stay (same ids); anything in data/rejected.json is never
 // picked again; new picks only fill what is missing. Selection rules:
-//   - per-area quotas (see QUOTAS)
+//   - optional per-area caps (see QUOTAS); otherwise areas fill until no candidate fits the rules,
+//     Medical and Athletic first
 //   - spread: farthest-point sampling inside each area, so picks go to the biggest gaps first,
 //     at most one photo per 70 m grid cell and none closer than 50 m to another
 //   - at most 8% of the final set within 250 m of the Diag (excess near-Diag photos are dropped)
@@ -37,14 +39,19 @@ import { CELL_M, DIAG_RADIUS_M, cellKey, renderCoverage, spreadReport } from "./
 import { PHOTOS_DIR, cachePath, fetchWithRetry, getEnv, parseArgs, randomId, readJson, sleep } from "./lib/util";
 
 /**
- * Targets per area. The aim was Central 35-40%, North 25-30%, Medical and Athletic 12-15% each, with floors
- * of 50 North / 25 Medical / 25 Athletic. Medical cannot get there: the hospital complex has almost no
- * Mapillary coverage (53 images in 3 sequences) and Commons photos there cluster at a few entrances, so the
- * 70 m / 50 m spacing rules allow about 16. Rather than shrink the whole set to keep percentages, Medical
- * takes what exists, Central stays at or under 40%, and North and Athletic absorb the difference.
+ * Per-area caps. The area shares (Central 35-40%, North 25-30%, Medical and Athletic 12-15%) are a guide,
+ * not a reason to drop good photos, so by default every area fills until no candidate fits the spread rules;
+ * PICK_ORDER gives the scarce areas first claim. Medical runs out early: the hospital complex has almost no
+ * Mapillary coverage (53 images in 3 sequences) and Commons photos there cluster at a few entrances.
  */
-const QUOTAS: Record<CampusArea, number> = { central: 72, north: 56, medical: 35, athletic: 36, other: 6 };
-const MIN_DIST_M = 50;
+const OPEN = 10_000;
+const QUOTAS: Record<CampusArea, number> = { central: OPEN, north: OPEN, medical: OPEN, athletic: OPEN, other: OPEN };
+/**
+ * Minimum distance between any two photos (on top of one per 70 m cell, which alone allows neighbours a few
+ * metres apart across a cell edge). It was 50 m; at that spacing the pools ran dry at ~180 photos, and 30 m
+ * adds ~30 more. Pairs under 50 m get a side-by-side look in review so no two show the same view.
+ */
+const MIN_DIST_M = 30;
 const DIAG_MAX_SHARE = 0.08;
 const SEQ_MAX = 2;
 const SEQ_MIN_DIST_M = 100;
@@ -54,12 +61,23 @@ const WINDOW = 0.7;
 const PICK_ORDER: CampusArea[] = ["medical", "athletic", "other", "north", "central"];
 /**
  * Review rejections that say something about neighbouring candidates too:
- * a "vehicle" reject (hood, dashboard, windshield reflections) means that camera mount is in the whole
- * sequence; a "nondescript" reject (bare road, trees) means the spot itself offers nothing to guess from.
+ *  - Mapillary "vehicle" (hood, dashboard, mirror, windshield reflections) or "blur" (low light, shake):
+ *    the same camera setup runs through the whole sequence, so skip the sequence.
+ *  - Commons "interior", "people", "elevated", "closeup": photographers upload whole sessions
+ *    (a game day, a concert), so skip that author's other photos from the same day at the same venue
+ *    (within 150 m; some authors cover the whole campus in a day).
+ *  - "nondescript" (bare road, trees): the spot itself offers nothing to place it by.
  */
-const BLOCK_SEQUENCE_REASONS = new Set(["vehicle"]);
+const BLOCK_SEQUENCE_REASONS = new Set(["vehicle", "blur"]);
+const BLOCK_SESSION_REASONS = new Set(["interior", "people", "elevated", "closeup"]);
 const BLOCK_SPOT_REASONS = new Set(["nondescript"]);
-const BLOCK_SPOT_RADIUS_M = 60;
+const BLOCK_SPOT_RADIUS_M = 100;
+const SESSION_RADIUS_M = 150;
+/**
+ * Commons titles that name a game, event or interior. Most Athletic-area Commons uploads are game-day shots
+ * from the stands; review rejected nearly all of the ones that were picked, so they are no longer candidates.
+ */
+const EVENT_TITLE = /\bvs\.?\b|\bgame\b|interior|crowd|\bband\b|concert|tailgat|commencement|graduation|hockey|basketball|football 20|softball 20|baseball 20|lacrosse|wrestling|gymnastics|volleyball|swimming/i;
 
 interface Picked {
   lat: number;
@@ -193,13 +211,14 @@ async function main() {
   const { flags } = parseArgs();
   const quotas = { ...QUOTAS };
   for (const a of AREAS) if (typeof flags[a] === "string") quotas[a] = Number(flags[a]);
-  const target = AREAS.reduce((s, a) => s + quotas[a], 0);
-  let diagCap = Math.floor(DIAG_MAX_SHARE * target);
+  const limit = typeof flags.limit === "string" ? Number(flags.limit) : Infinity;
+  let added = 0;
+  let diagCap = Infinity;
   const diagDistance = (p: { lat: number; lng: number }) => haversine(p.lat, p.lng, DIAG.lat, DIAG.lng);
   const dryRun = !!flags["dry-run"];
 
   const campus = loadCampus();
-  const pools = [...loadPool("mapillary"), ...loadPool("commons")];
+  const pools = [...loadPool("mapillary"), ...loadPool("commons").filter((c) => !EVENT_TITLE.test(c.sourceId))];
   const seqByKey = new Map(pools.filter((c) => c.sequence).map((c) => [sourceKey(c.source, c.sourceId), c.sequence!]));
   const capturedByKey = new Map(pools.map((c) => [sourceKey(c.source, c.sourceId), c.capturedAt]));
   fs.mkdirSync(PHOTOS_DIR, { recursive: true });
@@ -215,20 +234,36 @@ async function main() {
     return keep;
   });
   photos = photos.map((p) => ({ ...p, area: areaAt(campus, p.lat, p.lng)! }));
+  // An area over its quota (after a quota change) loses the photos that sit closest to another photo.
+  for (const a of AREAS) {
+    while (photos.filter((p) => p.area === a).length > quotas[a]) {
+      const nearest = (p: Photo) => Math.min(...photos.filter((q) => q !== p).map((q) => haversine(p.lat, p.lng, q.lat, q.lng)));
+      const drop = photos.filter((p) => p.area === a).sort((x, y) => nearest(x) - nearest(y))[0];
+      console.log(`  ${a} is over its quota of ${quotas[a]}: dropping ${drop.id} (${Math.round(nearest(drop))} m from its nearest neighbour)`);
+      photos = photos.filter((p) => p !== drop);
+    }
+  }
   if (!dryRun) savePhotos(photos);
 
   const poolByKey = new Map(pools.map((c) => [sourceKey(c.source, c.sourceId), c]));
   for (let round = 1; round <= 8; round++) {
     const used = new Set([...photos.map(photoSourceKey), ...rejectedKeys()]);
     const blockedSeqs = new Set<string>();
+    const blockedSessions: Candidate[] = [];
     const blockedSpots: Candidate[] = [];
     for (const r of rejected) {
       const c = r.by === "review" ? poolByKey.get(sourceKey(r.source, r.sourceId)) : undefined;
-      if (c?.sequence && BLOCK_SEQUENCE_REASONS.has(r.reason)) blockedSeqs.add(c.sequence);
-      if (c && BLOCK_SPOT_REASONS.has(r.reason)) blockedSpots.push(c);
+      if (!c) continue;
+      if (c.sequence && BLOCK_SEQUENCE_REASONS.has(r.reason)) blockedSeqs.add(c.sequence);
+      if (c.source === "commons" && c.capturedAt && BLOCK_SESSION_REASONS.has(r.reason)) blockedSessions.push(c);
+      if (BLOCK_SPOT_REASONS.has(r.reason)) blockedSpots.push(c);
     }
+    const sameSession = (a: Candidate, b: Candidate) =>
+      a.author === b.author && a.capturedAt?.slice(0, 10) === b.capturedAt?.slice(0, 10) && haversine(a.lat, a.lng, b.lat, b.lng) < SESSION_RADIUS_M;
     const blocked = (c: Candidate) =>
-      (c.sequence && blockedSeqs.has(c.sequence)) || blockedSpots.some((s) => haversine(s.lat, s.lng, c.lat, c.lng) < BLOCK_SPOT_RADIUS_M);
+      (c.sequence && blockedSeqs.has(c.sequence)) ||
+      (c.source === "commons" && blockedSessions.some((s) => sameSession(s, c))) ||
+      blockedSpots.some((s) => haversine(s.lat, s.lng, c.lat, c.lng) < BLOCK_SPOT_RADIUS_M);
     const pool = pools.filter((c) => !used.has(sourceKey(c.source, c.sourceId)) && areaAt(campus, c.lat, c.lng) === c.area && !blocked(c));
     const toPicked = (list: Photo[]): Picked[] =>
       list.map((p) => {
@@ -239,8 +274,11 @@ async function main() {
     // The Diag cap is 8% of the set this run ends with, which depends on what fits; settle it in a few passes.
     // If photos already near the Diag exceed it, drop the ones closest to the Diag center.
     let picks: Candidate[] = [];
+    let fit = 0;
     for (let pass = 0; pass < 5; pass++) {
       picks = select(pool, toPicked(photos), quotas, diagCap);
+      fit = picks.length;
+      picks = picks.slice(0, Math.max(0, limit - added));
       const cap = Math.floor(DIAG_MAX_SHARE * (photos.length + picks.length));
       const near = photos.filter((p) => diagDistance(p) <= DIAG_RADIUS_M).sort((a, b) => diagDistance(a) - diagDistance(b));
       if (cap >= diagCap && near.length <= diagCap) break;
@@ -252,7 +290,10 @@ async function main() {
         if (!dryRun) savePhotos(photos);
       }
     }
-    console.log(`Round ${round}: ${photos.length} kept, ${picks.length} new picks`, Object.fromEntries(AREAS.map((a) => [a, picks.filter((p) => p.area === a).length])));
+    console.log(
+      `Round ${round}: ${photos.length} kept, ${picks.length} new picks (${fit} candidates fit the rules)`,
+      Object.fromEntries(AREAS.map((a) => [a, picks.filter((p) => p.area === a).length])),
+    );
     if (!picks.length || dryRun) break;
 
     for (const c of picks) {
@@ -305,6 +346,7 @@ async function main() {
         area: c.area,
       } satisfies Photo);
       savePhotos(photos);
+      added++;
       await sleep(c.source === "commons" ? 500 : 100);
     }
   }
@@ -317,9 +359,8 @@ async function main() {
 
   const placed = photos.map((p) => ({ lat: p.lat, lng: p.lng, area: p.area, source: p.source, sequence: seqByKey.get(photoSourceKey(p) ?? "") }));
   console.log(spreadReport(placed));
-  console.log(`Targets: ${JSON.stringify(quotas)} (total ${target}); Diag cap ${diagCap}; ${CELL_M} m cells; min spacing ${MIN_DIST_M} m`);
-  const shortfalls = AREAS.filter((a) => placed.filter((p) => p.area === a).length < quotas[a]);
-  if (shortfalls.length) console.log(`Short of target (no more candidates that fit the rules): ${shortfalls.join(", ")}`);
+  const caps = AREAS.filter((a) => quotas[a] < OPEN).map((a) => `${a} ${quotas[a]}`);
+  console.log(`Added ${added} this run; caps: ${caps.join(", ") || "none"}; Diag cap ${diagCap}; ${CELL_M} m cells; min spacing ${MIN_DIST_M} m`);
   await renderCoverage(campus, placed, cachePath("coverage.png"), `${photos.length} photos`);
 }
 
