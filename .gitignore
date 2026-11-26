@@ -42,3 +42,6 @@ next-env.d.ts
 
 !.env.example
 .claude/settings.local.json
+
+# photo pipeline caches (raw API responses, contact sheets)
+/.cache/
