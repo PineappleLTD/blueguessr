@@ -48,3 +48,6 @@ next-env.d.ts
 
 # agent worktrees
 /.claude/
+
+# player photo uploads in local development (lib/uploads.ts)
+/public/_dev-uploads/
