@@ -1,0 +1,120 @@
+/* Solo game + leaderboard motion. Class names are prefixed sg- (global CSS). */
+
+@keyframes sg-count {
+  0% { transform: scale(2.4); opacity: 0; filter: blur(6px); }
+  16% { transform: scale(0.9); opacity: 1; filter: blur(0); }
+  28% { transform: scale(1.06); }
+  40%, 72% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.7); opacity: 0; }
+}
+.sg-count { animation: sg-count 640ms cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+@keyframes sg-ring {
+  0% { transform: scale(0.35); opacity: 0.9; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.sg-ring { animation: sg-ring 700ms cubic-bezier(0.1, 0.7, 0.3, 1) both; }
+
+@keyframes sg-go {
+  0% { transform: scale(0.2) rotate(-14deg); opacity: 0; }
+  45% { transform: scale(1.18) rotate(-6deg); opacity: 1; }
+  65% { transform: scale(0.96) rotate(-6deg); }
+  85% { transform: scale(1.02) rotate(-6deg); opacity: 1; }
+  100% { transform: scale(1.5) rotate(-6deg); opacity: 0; }
+}
+.sg-go { animation: sg-go 620ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+@keyframes sg-slam {
+  0% { transform: scale(3) rotate(-14deg); opacity: 0; }
+  55% { transform: scale(0.9) rotate(-5deg); opacity: 1; }
+  72% { transform: scale(1.07) rotate(-6deg); }
+  100% { transform: scale(1) rotate(-6deg); opacity: 1; }
+}
+.sg-slam { animation: sg-slam 520ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+@keyframes sg-bull {
+  0% { transform: scale(3) rotate(-14deg); opacity: 0; }
+  13% { transform: scale(0.9) rotate(-5deg); opacity: 1; }
+  19% { transform: scale(1.07) rotate(-6deg); }
+  25%, 78% { transform: scale(1) rotate(-6deg); opacity: 1; }
+  100% { transform: translateY(-40px) scale(0.8) rotate(-6deg); opacity: 0; }
+}
+.sg-bull { animation: sg-bull 2.6s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+
+@keyframes sg-banner {
+  0% { transform: translateY(-14px) scale(0.7); opacity: 0; }
+  14% { transform: translateY(0) scale(1.08); opacity: 1; }
+  24%, 78% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-8px) scale(0.96); opacity: 0; }
+}
+.sg-banner { animation: sg-banner 1300ms cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+@keyframes sg-flash {
+  0% { opacity: 0; }
+  12% { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+.sg-flash { animation: sg-flash 900ms ease-out both; }
+
+@keyframes sg-glow {
+  0%, 100% { box-shadow: 0 0 0 2px oklch(0.87 0.18 93 / 0.9), 0 0 34px 6px oklch(0.87 0.18 93 / 0.35), 0 20px 50px oklch(0 0 0 / 0.45); }
+  50% { box-shadow: 0 0 0 3px oklch(0.87 0.18 93 / 1), 0 0 60px 14px oklch(0.87 0.18 93 / 0.5), 0 20px 50px oklch(0 0 0 / 0.45); }
+}
+.sg-glow { animation: sg-glow 1.6s ease-in-out infinite; }
+
+/* Moving sheen over maize fills (progress bars, badges). */
+.sg-sheen {
+  background-image: linear-gradient(100deg, transparent 30%, oklch(1 0 0 / 0.45) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: bg-shine 2.2s linear infinite;
+}
+
+@keyframes sg-stamp {
+  0% { transform: scale(2.6) rotate(-16deg); opacity: 0; }
+  60% { transform: scale(0.92) rotate(-3deg); opacity: 1; }
+  80% { transform: scale(1.05) rotate(-5deg); }
+  100% { transform: scale(1) rotate(-4deg); opacity: 1; }
+}
+.sg-stamp { animation: sg-stamp 560ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+@keyframes sg-rise {
+  0% { transform: scaleY(0); }
+  70% { transform: scaleY(1.06); }
+  100% { transform: scaleY(1); }
+}
+.sg-rise { transform-origin: 50% 100%; animation: sg-rise 640ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+
+@keyframes sg-nudge {
+  0%, 82%, 100% { transform: translateY(0) rotate(0); }
+  86% { transform: translateY(-6px) rotate(-6deg); }
+  90% { transform: translateY(0) rotate(5deg); }
+  94% { transform: translateY(-3px) rotate(-3deg); }
+}
+.sg-nudge { animation: sg-nudge 3.2s ease-in-out infinite; }
+
+@keyframes sg-up {
+  0% { transform: translateY(14px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.sg-up { animation: sg-up 420ms cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+@keyframes sg-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.sg-dot { animation: sg-bob 900ms ease-in-out infinite; }
+
+/* PhotoViewer puts its zoom buttons bottom-right; in solo that corner belongs to the map. */
+.sg-photo div:has(> button[aria-label="Zoom in"]) {
+  right: auto;
+  left: 0.75rem;
+  bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sg-count, .sg-ring, .sg-go, .sg-slam, .sg-bull, .sg-banner, .sg-flash, .sg-glow, .sg-sheen,
+  .sg-stamp, .sg-rise, .sg-nudge, .sg-up, .sg-dot {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
