@@ -6,7 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "photos:campus": "tsx scripts/campus.ts",
+    "photos:commons": "tsx scripts/commons.ts",
+    "photos:mapillary": "tsx scripts/mapillary.ts",
+    "photos:build": "tsx scripts/build.ts",
+    "photos:all": "npm run photos:campus && npm run photos:commons && npm run photos:mapillary && npm run photos:build",
+    "photos:sheets": "tsx scripts/sheets.ts",
+    "photos:reject": "tsx scripts/reject.ts",
+    "photos:coverage": "tsx scripts/coverage.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
