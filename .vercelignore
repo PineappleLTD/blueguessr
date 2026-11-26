@@ -1,0 +1,6 @@
+# Agent worktrees, local caches and env files never go up with a CLI deploy.
+.claude
+.cache
+.next
+node_modules
+.env*
