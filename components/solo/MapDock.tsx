@@ -11,13 +11,21 @@ export const PHONE_PANEL_DVH = 46;
 /** Strip under the desktop reveal map that holds the result panel (keeps pins out from under it). */
 export const DESKTOP_PANEL_PX = 240;
 
+// Desktop while guessing: just the Map/Guess button in the corner, and the map opens above it on hover.
+const BUTTON_PX = 60;
+const GAP_PX = 10;
+const CLOSED_W_PX = 230;
+const OPEN_W = "min(660px, calc(100vw - 40px))";
+const OPEN_MAP_H = "min(470px, calc(100dvh - 190px))";
+
 const EASE = "cubic-bezier(0.2, 0.85, 0.25, 1)";
 const noFocus = (e: React.MouseEvent) => e.preventDefault();
 
 /**
- * The one map of a solo game. It morphs between three shapes and never remounts, so tiles,
- * zoom and the pin survive: a mini map docked bottom-right that grows on hover (desktop) or a
- * bottom sheet (phone) while guessing, then the big reveal map with the answer line.
+ * The one map of a solo game. It morphs between shapes and never remounts, so tiles, zoom and
+ * the pin survive: while guessing, a button in the bottom-right corner that opens into the map
+ * on hover (desktop) or a bottom sheet (phone); then the big reveal map with the answer line.
+ * It mounts during the countdown, out of sight, so the tiles are ready when the round starts.
  */
 export default function MapDock({
   phase,
@@ -30,6 +38,7 @@ export default function MapDock({
   onSubmit,
   sheetOpen,
   onSheet,
+  waiting = false,
 }: {
   phase: "round" | "reveal";
   phone: boolean;
@@ -41,6 +50,8 @@ export default function MapDock({
   onSubmit: () => void;
   sheetOpen: boolean;
   onSheet: (open: boolean) => void;
+  /** Countdown still running: keep the map loaded but out of sight. */
+  waiting?: boolean;
 }) {
   const reduced = useReducedMotion();
   const [hover, setHover] = useState(false);
@@ -104,6 +115,7 @@ export default function MapDock({
   const grown = useElapsed(reveal ? `reveal-${round}` : null, reduced ? 0 : 520);
 
   const big = !reveal && (hover || locked);
+  const corner = !phone && !reveal;
   let style: CSSProperties;
   if (phone) {
     style = reveal
@@ -117,23 +129,30 @@ export default function MapDock({
         };
   } else {
     style = reveal
-      ? { right: 0, bottom: DESKTOP_PANEL_PX, width: "100vw", height: `calc(100dvh - ${DESKTOP_PANEL_PX}px)` }
+      ? { right: 0, bottom: DESKTOP_PANEL_PX, width: "100vw", height: `calc(100dvh - ${DESKTOP_PANEL_PX}px)`, rowGap: 0 }
       : big
-        ? { right: 20, bottom: 20, width: "min(660px, calc(100vw - 40px))", height: "min(540px, calc(100dvh - 120px))" }
-        : { right: 20, bottom: 20, width: 340, height: 312 };
+        ? { right: 20, bottom: 20, width: OPEN_W, height: `calc(${OPEN_MAP_H} + ${BUTTON_PX + GAP_PX}px)`, rowGap: GAP_PX }
+        : { right: 20, bottom: 20, width: CLOSED_W_PX, height: BUTTON_PX, rowGap: 0 };
+    style.transform = waiting ? "translateY(24px)" : "translateY(0)";
+  }
+  if (waiting) {
+    style.opacity = 0;
+    style.visibility = "hidden";
   }
   style.transition = reduced
     ? "none"
-    : `width 300ms ${EASE}, height 340ms ${EASE}, right 340ms ${EASE}, bottom 340ms ${EASE}, transform 340ms ${EASE}`;
+    : `width 300ms ${EASE}, height 340ms ${EASE}, right 340ms ${EASE}, bottom 340ms ${EASE}, row-gap 340ms ${EASE}, transform 340ms ${EASE}, opacity 260ms ease-out`;
 
   const hasPin = !!guess;
+  // Closed on desktop with no pin yet: a "Map" button that opens it (for touch screens and keyboards).
+  const opener = corner && !big && !hasPin;
   const guessButton = (
     <button
       type="button"
       onMouseDown={noFocus}
-      onClick={onSubmit}
-      disabled={!hasPin || sending}
-      className={`btn-game w-full shrink-0 ${phone ? "py-4 text-2xl" : "py-3.5 text-2xl"}`}
+      onClick={opener ? () => setLocked(true) : onSubmit}
+      disabled={!opener && (!hasPin || sending)}
+      className={`btn-game w-full shrink-0 ${phone ? "py-4 text-2xl" : "h-15 py-0 text-2xl"}`}
     >
       {sending ? (
         <LoaderCircle className="size-6 animate-spin" strokeWidth={3} />
@@ -145,6 +164,11 @@ export default function MapDock({
               Space
             </kbd>
           )}
+        </>
+      ) : opener ? (
+        <>
+          <MapIcon className="size-5" strokeWidth={2.6} />
+          Map
         </>
       ) : (
         <>
@@ -159,7 +183,7 @@ export default function MapDock({
     <>
       <div
         ref={dockRef}
-        className={`fixed z-30 flex flex-col ${phone && !reveal ? "rounded-t-[1.75rem] border-t-2 border-maize/50 bg-night/95 shadow-[0_-20px_60px_rgba(0,0,0,.55)] backdrop-blur-md" : ""} ${!phone && !reveal ? "gap-2.5" : ""}`}
+        className={`fixed z-30 flex flex-col ${phone && !reveal ? "rounded-t-[1.75rem] border-t-2 border-maize/50 bg-night/95 shadow-[0_-20px_60px_rgba(0,0,0,.55)] backdrop-blur-md" : ""}`}
         style={style}
         onPointerEnter={hoverIn}
         onPointerMove={hoverIn}
@@ -168,7 +192,7 @@ export default function MapDock({
           clearTimeout(leaveTimer.current);
           leaveTimer.current = setTimeout(() => setHover(false), 380);
         }}
-        inert={phone && !reveal && !sheetOpen}
+        inert={waiting || (phone && !reveal && !sheetOpen)}
       >
         {phone && !reveal && (
           <div className="flex shrink-0 items-center justify-between px-4 pt-2.5 pb-2">
@@ -187,15 +211,28 @@ export default function MapDock({
 
         <div
           className={`relative min-h-0 flex-1 overflow-hidden bg-mblue-deep ${
-            reveal ? "" : phone ? "mx-3 rounded-2xl border border-maize/25" : `rounded-2xl border-2 shadow-[0_18px_50px_rgba(0,0,0,.55)] transition-colors ${big ? "border-maize" : "border-maize/40"}`
+            reveal
+              ? ""
+              : phone
+                ? "mx-3 rounded-2xl border border-maize/25"
+                : `rounded-2xl shadow-[0_18px_50px_rgba(0,0,0,.55)] transition-[border-color,border-width,opacity] duration-300 ${big ? "border-maize" : "border-maize/40"}`
           }`}
+          style={corner ? { borderWidth: big ? 2 : 0, opacity: big ? 1 : 0 } : undefined}
+          inert={corner && !big}
         >
-          <GuessMap
-            guess={guess}
-            onGuess={reveal ? undefined : onGuess}
-            answer={reveal && grown ? answer : null}
-            resetKey={round}
-          />
+          {/* In the corner the map keeps its open size and the box clips it, so opening and closing
+              never resize MapLibre. */}
+          <div
+            className={corner ? "absolute right-0 bottom-0" : "absolute inset-0"}
+            style={corner ? { width: `calc(${OPEN_W} - 4px)`, height: `calc(${OPEN_MAP_H} - 4px)` } : undefined}
+          >
+            <GuessMap
+              guess={guess}
+              onGuess={reveal ? undefined : onGuess}
+              answer={reveal && grown ? answer : null}
+              resetKey={round}
+            />
+          </div>
           {!phone && !reveal && (
             <button
               type="button"
@@ -217,7 +254,7 @@ export default function MapDock({
         )}
       </div>
 
-      {phone && !reveal && !sheetOpen && (
+      {phone && !reveal && !sheetOpen && !waiting && (
         <button
           type="button"
           onClick={() => onSheet(true)}

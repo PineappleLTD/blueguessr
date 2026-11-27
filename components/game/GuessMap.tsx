@@ -230,10 +230,12 @@ export default function GuessMap({
       map.on("movestart", (e) => {
         if (e.originalEvent) showCampus.current = false;
       });
-      ro = new ResizeObserver(() => {
+      ro = new ResizeObserver(([entry]) => {
         map.resize();
         // The dock shrinks back to the corner after a reveal: keep all of campus in view while it does.
-        if (showCampus.current) map.fitBounds(campusBounds, { padding: 24, duration: 0 });
+        // (Not while the box is still a sliver, as it is when the closed solo dock starts opening.)
+        const { width, height } = entry.contentRect;
+        if (showCampus.current && width > 80 && height > 80) map.fitBounds(campusBounds, { padding: 24, duration: 0 });
       });
       ro.observe(containerRef.current);
     })();

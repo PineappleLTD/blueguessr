@@ -381,6 +381,7 @@ export default function SoloGame({ daily = false }: { daily?: boolean }) {
           onSubmit={() => void sendGuess()}
           sheetOpen={state.sheet}
           onSheet={onSheet}
+          waiting={status === "countdown"}
         />
       )}
 

@@ -4,16 +4,23 @@ export const ROUNDS_PER_GAME = 5;
 export const MAX_ROUND_SCORE = 5000;
 export const MAX_GAME_SCORE = ROUNDS_PER_GAME * MAX_ROUND_SCORE;
 
-/** Pins within this many metres of the photo score full points and count as a bullseye. */
-export const BULLSEYE_METERS = 10;
+/** Pins within this many metres of the photo score full points and count as a bullseye (GeoGuessr: 25 m). */
+export const BULLSEYE_METERS = 25;
 
-/** Distance (m) over which the score falls by a factor of e. Campus is ~4 km end to end. */
-const FALLOFF_METERS = 320;
+/**
+ * GeoGuessr's scale: the diagonal of the box around every location on the map. Ours is the
+ * spread of data/photos.json (Central to North to the athletic fields), about 6.3 km.
+ */
+const MAP_SIZE_METERS = 6300;
 
+/**
+ * GeoGuessr's formula: 5000 × e^(−10 × distance / map size), full points inside 25 m.
+ * On the world map that is the familiar 5000 × e^(−km / 1492.7).
+ */
 export function roundScore(distanceM: number): number {
   if (!Number.isFinite(distanceM)) return 0;
   if (distanceM <= BULLSEYE_METERS) return MAX_ROUND_SCORE;
-  return Math.round(MAX_ROUND_SCORE * Math.exp(-(distanceM - BULLSEYE_METERS) / FALLOFF_METERS));
+  return Math.round(MAX_ROUND_SCORE * Math.exp((-10 * distanceM) / MAP_SIZE_METERS));
 }
 
 export const isBullseye = (distanceM: number) => distanceM <= BULLSEYE_METERS;
