@@ -55,7 +55,7 @@ export default function SubmitScore({ gameId, onPosted }: { gameId: string; onPo
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-3">
-            <span className="text-display text-5xl text-maize-gradient tabular-nums">#{posted.rank}</span>
+            <span className="text-display text-5xl text-maize-gradient tabular-nums">#{posted.dayRank}</span>
             {posted.newBest && (
               <span className="text-display sg-stamp inline-flex items-center gap-1 rounded-lg bg-maize px-2 py-0.5 text-lg text-mblue">
                 <Sparkles className="size-4" strokeWidth={2.6} />
@@ -65,7 +65,7 @@ export default function SubmitScore({ gameId, onPosted }: { gameId: string; onPo
           </div>
           <div className="text-display mt-1 flex flex-wrap gap-x-4 text-base text-maize-soft/70">
             <span>
-              Week <span className="text-maize tabular-nums">#{posted.weekRank}</span>
+              All time <span className="text-maize tabular-nums">#{posted.rank}</span>
             </span>
             <span>
               Best <span className="text-maize tabular-nums">{posted.best.toLocaleString("en-US")}</span>

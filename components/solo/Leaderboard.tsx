@@ -2,15 +2,14 @@
 
 import "./solo.css";
 import Link from "next/link";
-import { Crown, Gamepad2, Play, RotateCcw, Target, Trophy, Users } from "lucide-react";
+import { CalendarDays, Crown, Gamepad2, RotateCcw, Target, Trophy, Users } from "lucide-react";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { safePlayer, soloApi, type LeaderboardData, type LeaderboardEntry, type Period } from "./api";
-import DotDunes from "./DotDunes";
 import { fmt } from "./hooks";
 
 const TABS: { id: Period; label: string }[] = [
+  { id: "today", label: "Today" },
   { id: "all", label: "All time" },
-  { id: "week", label: "This week" },
 ];
 
 const MEDALS = [
@@ -33,10 +32,10 @@ function subscribePeriod(cb: () => void) {
     window.removeEventListener(PERIOD_EVENT, cb);
   };
 }
-const urlPeriod = (): Period => (new URLSearchParams(window.location.search).get("period") === "week" ? "week" : "all");
+const urlPeriod = (): Period => (new URLSearchParams(window.location.search).get("period") === "all" ? "all" : "today");
 function choosePeriod(p: Period) {
   const url = new URL(window.location.href);
-  if (p === "week") url.searchParams.set("period", "week");
+  if (p === "all") url.searchParams.set("period", "all");
   else url.searchParams.delete("period");
   window.history.replaceState(window.history.state, "", url);
   window.dispatchEvent(new Event(PERIOD_EVENT));
@@ -132,18 +131,18 @@ function Row({ e, me, delay }: { e: LeaderboardEntry; me: string; delay: number 
   );
 }
 
-/** Ranked solo leaderboard: all time / this week, podium for the top three, then the top 50. */
+/** The daily leaderboard: today / all time, podium for the top three, then the top 50. */
 export default function Leaderboard() {
   const me = useSyncExternalStore(noop, localName, () => "");
-  const period = useSyncExternalStore(subscribePeriod, urlPeriod, () => "all" as Period);
+  const period = useSyncExternalStore(subscribePeriod, urlPeriod, () => "today" as Period);
   const [boards, setBoards] = useState<Partial<Record<Period, LeaderboardData>>>({});
   const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     const name = localName() || undefined;
     try {
-      const [all, week] = await Promise.all([soloApi.leaderboard("all", name), soloApi.leaderboard("week", name)]);
-      setBoards({ all, week });
+      const [today, all] = await Promise.all([soloApi.leaderboard("today", name), soloApi.leaderboard("all", name)]);
+      setBoards({ today, all });
       setFailed(false);
     } catch {
       setFailed(true);
@@ -166,8 +165,8 @@ export default function Leaderboard() {
   const meRow = data?.me && data.me.rank > entries.length ? data.me : null;
 
   return (
-    <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pb-3 sm:px-6">
-      <div className="flex shrink-0 flex-col items-center gap-4 pt-1 sm:pt-3">
+    <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pb-4 sm:px-6">
+      <div className="flex shrink-0 flex-col items-center gap-4 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-5">
         <h1 className="text-display animate-pop flex items-center gap-3 text-[2.8rem] text-maize-gradient sm:text-6xl">
           <Trophy className="size-10 text-maize sm:size-12" strokeWidth={2.2} />
           Leaderboard
@@ -215,9 +214,9 @@ export default function Leaderboard() {
           {data && entries.length === 0 && (
             <div className="mt-8 flex flex-col items-center gap-5">
               <p className="text-display text-4xl text-maize-soft/80">No scores yet</p>
-              <Link href="/play" className="btn-game px-10 py-4 text-3xl">
-                <Play className="size-7 fill-current" strokeWidth={2.4} />
-                Play
+              <Link href="/daily" className="btn-game px-10 py-4 text-3xl">
+                <CalendarDays className="size-7" strokeWidth={2.4} />
+                Daily
               </Link>
             </div>
           )}
@@ -255,23 +254,14 @@ export default function Leaderboard() {
 
           {entries.length > 0 && (
             <div className="mt-4 flex shrink-0 justify-center">
-              <Link href="/play" className="btn-game px-9 py-3 text-2xl">
-                <Play className="size-7 fill-current" strokeWidth={2.4} />
-                Play
+              <Link href="/daily" className="btn-game px-9 py-3 text-2xl">
+                <CalendarDays className="size-7" strokeWidth={2.4} />
+                Daily
               </Link>
             </div>
           )}
         </>
       )}
-    </main>
-  );
-}
-
-/** Dunes along the bottom of the page. */
-export function LeaderboardBackdrop() {
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 h-[34vh] opacity-45" aria-hidden>
-      <DotDunes rows={8} speed={0.5} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type * as THREE_NS from "three";
 
 /*
@@ -200,7 +200,6 @@ function webglAvailable() {
 
 export default function ParticleDunes({ className = "" }: { className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [live, setLive] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -217,7 +216,7 @@ export default function ParticleDunes({ className = "" }: { className?: string }
       try {
         renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "low-power" });
       } catch {
-        return; // keep the static fallback
+        return; // no WebGL: the sky stays bare
       }
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const small = window.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
@@ -316,7 +315,6 @@ export default function ParticleDunes({ className = "" }: { className?: string }
         if (!shown) {
           shown = true;
           canvas.style.opacity = "1";
-          setLive(true);
         }
       };
 
@@ -363,7 +361,6 @@ export default function ParticleDunes({ className = "" }: { className?: string }
         renderer.setAnimationLoop(null);
         running = false;
         canvas.style.opacity = "0";
-        setLive(false);
       };
       canvas.addEventListener("webglcontextlost", onLost);
 
@@ -400,57 +397,9 @@ export default function ParticleDunes({ className = "" }: { className?: string }
     return () => {
       disposed = true;
       teardown();
-      setLive(false);
     };
   }, []);
 
-  return (
-    <div ref={containerRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`}>
-      <DunesFallback className={`transition-opacity duration-700 ${live ? "opacity-0" : "opacity-100"}`} />
-    </div>
-  );
-}
-
-/** Static dotted dunes: shown before WebGL is up, and instead of it when there's none. */
-function DunesFallback({ className = "" }: { className?: string }) {
-  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const dots = `${id}-dots`;
-  const fine = `${id}-fine`;
-  const fade = `${id}-fade`;
-  return (
-    <svg
-      viewBox="0 0 1200 300"
-      preserveAspectRatio="xMidYMax slice"
-      className={`absolute inset-0 h-full w-full ${className}`}
-    >
-      <defs>
-        <pattern id={fine} width="6" height="6" patternUnits="userSpaceOnUse">
-          <circle cx="1.5" cy="1.5" r="0.9" fill="#E8A317" />
-        </pattern>
-        <pattern id={dots} width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(12)">
-          <circle cx="2" cy="2" r="1.4" fill="#FFCB05" />
-        </pattern>
-        <linearGradient id={fade} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0.1" stopColor="#fff" stopOpacity="0" />
-          <stop offset="0.75" stopColor="#fff" stopOpacity="1" />
-        </linearGradient>
-        <mask id={`${id}-mask`}>
-          <rect width="1200" height="300" fill={`url(#${fade})`} />
-        </mask>
-      </defs>
-      <g mask={`url(#${id}-mask)`}>
-        <path
-          d="M0 70C140 52 260 86 400 74S660 40 820 58 1080 84 1200 66V300H0Z"
-          fill={`url(#${fine})`}
-          opacity="0.45"
-        />
-        <path
-          d="M0 132C170 104 300 150 470 136S760 92 930 116 1120 150 1200 134V300H0Z"
-          fill={`url(#${fine})`}
-          opacity="0.7"
-        />
-        <path d="M0 200C190 170 340 222 540 204S860 160 1020 184 1160 214 1200 204V300H0Z" fill={`url(#${dots})`} />
-      </g>
-    </svg>
-  );
+  // Empty until the live dunes fade in: no static stand-in.
+  return <div ref={containerRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`} />;
 }

@@ -2,7 +2,6 @@
 
 import { Check, Eye, LogOut, Skull, X, Zap } from "lucide-react";
 import { useState } from "react";
-import { VERSUS_ROUND_SECONDS } from "@/lib/scoring";
 import { Avatar, colorOf } from "./bits";
 import { HealthBar } from "./FightPanel";
 import type { PlayerView, RoomView } from "./types";
@@ -20,7 +19,7 @@ export function MultiplierBadge({ multiplier, className = "" }: { multiplier: nu
   );
 }
 
-function Timer({ msLeft, rushed, intro }: { msLeft: number; rushed: boolean; intro: boolean }) {
+function Timer({ msLeft, rushed, intro, seconds }: { msLeft: number; rushed: boolean; intro: boolean; seconds: number }) {
   const s = Math.ceil(msLeft / 1000);
   const urgent = !intro && (rushed || s <= 10);
   return (
@@ -31,7 +30,7 @@ function Timer({ msLeft, rushed, intro }: { msLeft: number; rushed: boolean; int
         }`}
       >
         {rushed && !intro && <Zap className="size-5 fill-current" aria-label="Rush" />}
-        <span className={`text-4xl leading-none lg:text-5xl ${urgent && s > 0 ? "vs-pulse-red" : ""}`}>{intro ? VERSUS_ROUND_SECONDS : s}</span>
+        <span className={`text-4xl leading-none lg:text-5xl ${urgent && s > 0 ? "vs-pulse-red" : ""}`}>{intro ? seconds : s}</span>
       </div>
     </div>
   );
@@ -83,7 +82,7 @@ export default function Hud({
   const round = view.phase === "round";
   const me = view.players.find((p) => p.me);
   const watching = !me || !!me.out;
-  const fraction = round && !intro ? Math.max(0, Math.min(1, msLeft / (VERSUS_ROUND_SECONDS * 1000))) : round ? 1 : 0;
+  const fraction = round && !intro ? Math.max(0, Math.min(1, msLeft / (view.roundSeconds * 1000))) : round ? 1 : 0;
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-night via-night/85 to-night/0 pb-5">
@@ -102,7 +101,7 @@ export default function Hud({
           ))}
         </ul>
 
-        {round && <Timer msLeft={msLeft} rushed={view.rushed} intro={intro} />}
+        {round && <Timer seconds={view.roundSeconds} msLeft={msLeft} rushed={view.rushed} intro={intro} />}
         {watching && (
           <span className="hidden items-center gap-1 rounded-full bg-mblue px-2.5 py-1 font-display text-sm font-extrabold italic uppercase text-maize/80 sm:inline-flex">
             {me?.out === "ko" ? <Skull className="size-4" /> : <Eye className="size-4" />}

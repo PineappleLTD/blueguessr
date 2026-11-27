@@ -1,20 +1,17 @@
 import type { Metadata } from "next";
-import Footer from "@/components/site/Footer";
-import Header from "@/components/site/Header";
-import Leaderboard, { LeaderboardBackdrop } from "@/components/solo/Leaderboard";
+import BackLink from "@/components/site/BackLink";
+import Screen from "@/components/site/Screen";
+import Leaderboard from "@/components/solo/Leaderboard";
 
 export const metadata: Metadata = {
   title: "Leaderboard · BlueGuessr",
 };
 
-/** Ranked solo leaderboard. The shell is static; rankings load from /api/leaderboard. */
+/** The daily leaderboard. The shell is static; rankings load from /api/leaderboard. */
 export default function LeaderboardPage() {
   return (
-    <div className="relative flex h-dvh flex-col overflow-hidden">
-      <LeaderboardBackdrop />
-      <Header />
+    <Screen fit header={<BackLink className="absolute top-[max(0.75rem,env(safe-area-inset-top))] left-4 z-30 sm:left-6" />}>
       <Leaderboard />
-      <Footer waves={false} solid={false} className="z-10 shrink-0" />
-    </div>
+    </Screen>
   );
 }

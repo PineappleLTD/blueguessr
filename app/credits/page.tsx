@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import Footer from "@/components/site/Footer";
 import Header from "@/components/site/Header";
+import Screen from "@/components/site/Screen";
 import { staticPhotos } from "@/lib/photos";
 import type { Photo } from "@/lib/types";
 
@@ -44,10 +44,9 @@ export default function CreditsPage() {
   const licenses = licenseList(photos);
 
   return (
-    <div className="relative flex min-h-dvh flex-col">
-      <Header />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-5 pb-16 sm:px-8">
-        <h1 className="text-display py-4 text-6xl text-maize-gradient sm:py-6 sm:text-8xl">Credits</h1>
+    <Screen header={<Header />}>
+      <div className="mx-auto w-full max-w-6xl flex-1 px-5 pb-16 sm:px-8">
+        <h1 className="text-display py-3 text-6xl text-maize-gradient sm:py-4 sm:text-7xl">Credits</h1>
 
         <Section title="Photos">
           <Sub title="Mapillary" href="https://www.mapillary.com/">
@@ -141,9 +140,8 @@ export default function CreditsPage() {
             </li>
           </List>
         </Section>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </Screen>
   );
 }
 
@@ -179,7 +177,7 @@ function List({ children }: { children: ReactNode }) {
 
 function CreditList({ rows }: { rows: CreditRow[] }) {
   return (
-    <List>
+    <ul className="gap-x-8 text-sm leading-relaxed text-foreground/85 sm:columns-2 lg:columns-3 [&>li]:mb-1.5 [&>li]:break-inside-avoid">
       {rows.map((r) => (
         <li key={`${r.author}\u0000${r.license}`}>
           {r.author}
@@ -189,6 +187,6 @@ function CreditList({ rows }: { rows: CreditRow[] }) {
           </a>
         </li>
       ))}
-    </List>
+    </ul>
   );
 }

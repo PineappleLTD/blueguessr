@@ -5,11 +5,10 @@ import { useState } from "react";
 import { GOLD, MAIZE } from "@/components/game/GuessMap";
 import { Avatar, colorOf, Dots, fmt, Tag } from "./bits";
 import Confetti from "./Confetti";
-import Dunes from "./Dunes";
 import type { RoomSync } from "./hooks";
 import type { RoomError, RoomView } from "./types";
 import VersusStyles from "./VersusStyles";
-import Footer from "@/components/site/Footer";
+import Screen from "@/components/site/Screen";
 
 const REMATCH_ERRORS: Partial<Record<RoomError, string>> = {
   need_players: "Need 2 players",
@@ -46,22 +45,20 @@ export default function Finish({
   };
 
   return (
-    <>
-      {header}
+    <Screen header={header} className="items-center justify-center px-4 pb-[6svh]">
       <VersusStyles />
       <Confetti className="fixed inset-0 z-40 h-full w-full" colors={confettiColors} burstKey={`${view.code}-${view.game}`} />
-      <main className="relative flex flex-1 flex-col items-center overflow-hidden px-4 pt-2 pb-44 sm:pt-6">
         {winner ? (
           <div className="flex flex-col items-center text-center">
-            <p className="vs-rise font-display text-2xl font-extrabold italic uppercase tracking-wide text-maize/80">
+            <p className="vs-rise font-display text-xl font-extrabold italic uppercase tracking-wide text-maize/80">
               {winner.pid === me.pid ? "You win" : "Winner"}
             </p>
-            <div className="vs-slam relative mt-4" style={{ animationDelay: "120ms" }}>
-              <Avatar name={winner.name} color={winner.color} size={112} />
-              <Crown className="absolute -top-14 left-1/2 size-20 -translate-x-1/2 -rotate-6 fill-maize text-gold-deep drop-shadow-[0_4px_0_rgb(0_0_0/0.35)]" />
+            <div className="vs-slam relative mt-7" style={{ animationDelay: "120ms" }}>
+              <Avatar name={winner.name} color={winner.color} size={76} />
+              <Crown className="absolute -top-10 left-1/2 size-14 -translate-x-1/2 -rotate-6 fill-maize text-gold-deep drop-shadow-[0_4px_0_rgb(0_0_0/0.35)]" />
             </div>
             <h1
-              className="vs-slam mt-4 max-w-[92vw] truncate text-display text-[clamp(3.6rem,15vw,7.5rem)]"
+              className="vs-slam mt-2 max-w-[92vw] truncate text-display text-[clamp(3rem,12vw,5.5rem)] leading-none"
               style={{
                 color: colorOf(winner.color),
                 filter: "drop-shadow(0 5px 0 rgb(0 0 0 / 0.45))",
@@ -72,19 +69,19 @@ export default function Finish({
             </h1>
           </div>
         ) : (
-          <h1 className="vs-slam mt-10 text-display text-[clamp(4.5rem,18vw,8rem)] text-maize-gradient">Draw</h1>
+          <h1 className="vs-slam text-display text-[clamp(4rem,15vw,6.5rem)] leading-none text-maize-gradient">Draw</h1>
         )}
 
         {result && (
-          <ol className="vs-rise mt-8 w-full max-w-xl space-y-2" style={{ animationDelay: "400ms" }}>
+          <ol className="vs-rise mt-5 w-full max-w-xl space-y-1.5" style={{ animationDelay: "400ms" }}>
             {result.standings.map((s) => (
               <li
                 key={s.pid}
-                className={`flex items-center gap-3 rounded-2xl border-2 bg-mblue/55 px-3 py-2.5 ${s.winner ? "border-maize bg-mblue" : "border-transparent"}`}
+                className={`flex items-center gap-3 rounded-2xl border-2 bg-mblue/55 px-3 py-1.5 ${s.winner ? "border-maize bg-mblue" : "border-transparent"}`}
                 style={s.pid === me.pid ? { boxShadow: `0 0 0 3px ${colorOf(s.color)}44` } : undefined}
               >
                 <span className="w-7 text-center font-display text-3xl font-black italic text-maize/80 tabular-nums">{s.rank}</span>
-                <Avatar name={s.name} color={s.color} size={36} dim={!!s.out && !s.winner} />
+                <Avatar name={s.name} color={s.color} size={32} dim={!!s.out && !s.winner} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-display text-2xl leading-tight font-extrabold italic uppercase">{s.name}</span>
                   <span className="flex flex-wrap gap-1">
@@ -112,14 +109,14 @@ export default function Finish({
           </ol>
         )}
 
-        <div className="mt-8 flex w-full max-w-md flex-col items-center gap-4">
+        <div className="mt-5 flex w-full max-w-md flex-col items-center gap-3">
           {me.host ? (
             <>
               <button
                 type="button"
                 onClick={rematch}
                 disabled={busy || !view.canRematch}
-                className={`btn-game w-full py-5 text-3xl ${view.canRematch && !busy ? "vs-glow" : ""}`}
+                className={`btn-game w-full py-4 text-3xl ${view.canRematch && !busy ? "vs-glow" : ""}`}
               >
                 {busy ? <Loader2 className="size-7 animate-spin" /> : <RotateCcw className="size-7" />}
                 {view.canRematch ? "Rematch" : "Need 2 players"}
@@ -142,9 +139,6 @@ export default function Finish({
             Leave
           </button>
         </div>
-        <Dunes className="absolute inset-x-0 bottom-0" />
-      </main>
-      <Footer waves={false} solid={false} className="relative z-10" />
-    </>
+    </Screen>
   );
 }

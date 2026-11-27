@@ -51,7 +51,7 @@ export default function CodeInput({
           return (
             <div
               key={i}
-              className={`grid aspect-[4/5] place-items-center rounded-xl border-2 font-display text-4xl font-extrabold italic transition-all duration-150 sm:text-5xl ${
+              className={`grid h-14 place-items-center rounded-xl border-2 font-display text-3xl font-extrabold italic transition-all duration-150 sm:h-16 sm:text-4xl ${
                 invalid
                   ? "border-destructive/80 bg-destructive/10 text-destructive"
                   : active
@@ -61,7 +61,7 @@ export default function CodeInput({
                       : "border-maize/15 bg-mblue-deep/70 text-maize/30"
               }`}
             >
-              {c.trim() || (active ? <span className="h-8 w-1 animate-pulse rounded bg-maize/80" /> : "·")}
+              {c.trim() || (active ? <span className="h-7 w-1 animate-pulse rounded bg-maize/80" /> : "·")}
             </div>
           );
         })}

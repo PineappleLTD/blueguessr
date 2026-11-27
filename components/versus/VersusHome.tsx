@@ -4,7 +4,6 @@ import { Loader2, Swords, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CodeInput from "./CodeInput";
-import Dunes from "./Dunes";
 import { roomApi, saveName, useLocalPlayer } from "./hooks";
 import NameField, { nameOk } from "./NameField";
 import { isRoomCode } from "./types";
@@ -65,19 +64,19 @@ export default function VersusHome() {
   };
 
   return (
-    <main className="relative flex flex-1 flex-col items-center overflow-hidden px-4 pt-2 pb-44 sm:pt-6">
+    <div className="flex flex-1 flex-col items-center justify-center px-4 pt-1 pb-[8svh]">
       <VersusStyles />
-      <div className="relative mb-6 flex w-full max-w-xl flex-col items-center sm:mb-8">
-        <CrossedPins className="vs-rise relative -mb-7 h-28 w-auto sm:-mb-9 sm:h-40" />
+      <div className="relative mb-4 flex w-full max-w-xl flex-col items-center">
+        <CrossedPins className="vs-rise relative -mb-5 h-16 w-auto sm:-mb-6 sm:h-24" />
         <h1
-          className="vs-slam relative text-display text-[clamp(4.6rem,21vw,9.5rem)] text-maize-gradient"
+          className="vs-slam relative text-display text-[clamp(3.8rem,16vw,6.5rem)] leading-none text-maize-gradient"
           style={{ filter: "drop-shadow(0 6px 0 var(--gold-deep)) drop-shadow(0 18px 30px rgb(0 0 0 / 0.55))" }}
         >
           Versus
         </h1>
       </div>
 
-      <div className="panel vs-rise relative w-full max-w-md space-y-6 p-5 sm:p-7" style={{ animationDelay: "120ms" }}>
+      <div className="panel vs-rise relative w-full max-w-md space-y-4 p-4 sm:p-5" style={{ animationDelay: "120ms" }}>
         <NameField
           value={name}
           onChange={(v) => {
@@ -88,7 +87,7 @@ export default function VersusHome() {
           showError={nameError}
         />
 
-        <button type="button" onClick={create} disabled={busy !== null} className="btn-game w-full text-2xl">
+        <button type="button" onClick={create} disabled={busy !== null} className="btn-game w-full py-3 text-2xl">
           {busy === "create" ? <Loader2 className="size-6 animate-spin" /> : <Swords className="size-6" />}
           Create room
         </button>
@@ -99,7 +98,7 @@ export default function VersusHome() {
           <span className="h-px flex-1 bg-maize/20" />
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <div className="flex items-baseline justify-between">
             <label htmlFor="vs-code" className="font-display text-lg font-extrabold italic uppercase text-maize">
               Room code
@@ -115,14 +114,12 @@ export default function VersusHome() {
             onEnter={join}
             invalid={!!codeError}
           />
-          <button type="button" onClick={join} disabled={busy !== null} className="btn-game btn-game-blue w-full text-2xl">
+          <button type="button" onClick={join} disabled={busy !== null} className="btn-game btn-game-blue w-full py-3 text-2xl">
             {busy === "join" ? <Loader2 className="size-6 animate-spin" /> : null}
             Join
           </button>
         </div>
       </div>
-
-      <Dunes className="absolute inset-x-0 bottom-0" />
-    </main>
+    </div>
   );
 }

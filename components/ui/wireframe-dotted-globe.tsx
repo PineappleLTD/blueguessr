@@ -28,6 +28,8 @@ interface RotatingEarthProps {
   strokeColor?: string
   /** Halftone land dot color. */
   dotColor?: string
+  /** Fill land with halftone dots. Off: coastlines only. */
+  dots?: boolean
   /** Optional [lng, lat] to pin with a pulsing marker (e.g. Ann Arbor). */
   marker?: [number, number]
   markerColor?: string
@@ -103,8 +105,9 @@ const generateDotsInFeature = (feature: any, out: number[], lakes: any[] = [], d
   }
 }
 
-function loadLand(url: string): Promise<Land> {
-  let pending = landCache.get(url)
+function loadLand(url: string, withDots: boolean): Promise<Land> {
+  const key = withDots ? url : `${url}#outline`
+  let pending = landCache.get(key)
   if (!pending) {
     pending = fetch(url)
       .then((response) => {
@@ -117,9 +120,10 @@ function loadLand(url: string): Promise<Land> {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const isLake = (feature: any) => feature.properties?.lake === true
         const lakes = collection.features.filter(isLake)
-        collection.features.forEach((feature) => {
-          if (!isLake(feature)) generateDotsInFeature(feature, lngLat, lakes)
-        })
+        if (withDots)
+          collection.features.forEach((feature) => {
+            if (!isLake(feature)) generateDotsInFeature(feature, lngLat, lakes)
+          })
         const n = lngLat.length / 2
         const lambda = new Float32Array(n)
         const sinPhi = new Float32Array(n)
@@ -132,8 +136,8 @@ function loadLand(url: string): Promise<Land> {
         }
         return { collection, lambda, sinPhi, cosPhi }
       })
-    pending.catch(() => landCache.delete(url))
-    landCache.set(url, pending)
+    pending.catch(() => landCache.delete(key))
+    landCache.set(key, pending)
   }
   return pending
 }
@@ -150,6 +154,7 @@ export default function RotatingEarth({
   oceanColor = "#000000",
   strokeColor = "#ffffff",
   dotColor = "#999999",
+  dots = true,
   marker,
   markerColor = "#FFCB05",
   initialRotation = [0, 0],
@@ -469,7 +474,7 @@ export default function RotatingEarth({
       ro.observe(root)
     }
 
-    loadLand(dataUrl)
+    loadLand(dataUrl, dots)
       .then((loaded) => {
         if (disposed) return
         land = loaded
@@ -505,6 +510,7 @@ export default function RotatingEarth({
     oceanColor,
     strokeColor,
     dotColor,
+    dots,
     markerColor,
     speed,
     dataUrl,

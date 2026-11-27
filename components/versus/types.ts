@@ -120,6 +120,8 @@ export interface RoomView {
   startsAt: number | null;
   /** Server time the round closes, with the rush applied. */
   deadline: number | null;
+  /** Seconds per round in this room's game. */
+  roundSeconds: number;
   /** Someone guessed, so the clock dropped to the rush timer. */
   rushed: boolean;
   /** pid -> has guessed. Booleans only until the reveal. */

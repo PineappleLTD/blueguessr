@@ -3,13 +3,18 @@ import { createHash, randomBytes } from "node:crypto";
 import { CAMPUS } from "./campus";
 import { campusFeatureAt, distanceMeters } from "./geo";
 import { kv } from "./kv";
-import { pickPhotos, toReveal, toRoundPhoto } from "./photos";
+import { DAILY_ROUND_SECONDS, dailyDate } from "./daily";
+import { photoById, pickPhotos, toReveal, toRoundPhoto } from "./photos";
 import { isBullseye, ROUNDS_PER_GAME, roundScore } from "./scoring";
 import type { LngLat, Photo, RoundPhoto, RoundReveal } from "./types";
 
 // Solo games. A game lives in KV under game:<id> (its five photos, answers included, never sent
 // before the matching guess) and its guesses in the hash game:<id>:guesses, one field per round.
 // Every score is computed here; the browser only ever sends pins.
+//
+// Daily games (lib/daily.ts) share one set of photos per day, time each round on the server
+// (game:<id>:starts holds when each round began) and are the only games that reach the
+// leaderboard: a player's first daily of the day, played without landmarks or map labels.
 
 /** Games (and their guesses) expire a day after they start. */
 export const GAME_TTL_SECONDS = 60 * 60 * 24;
@@ -25,6 +30,14 @@ const SPREAD_METERS = 400;
 
 const gameKey = (id: string) => `game:${id}`;
 const guessesKey = (id: string) => `game:${id}:guesses`;
+const startsKey = (id: string) => `game:${id}:starts`;
+/** The day's five photos, fixed the first time anyone starts that daily. */
+const dailyPhotosKey = (day: string) => `daily:${day}:photos`;
+/** Set (nx) when a player first starts a day's daily: only that game can be ranked. */
+const dailyPlayedKey = (day: string, owner: string) => `daily:${day}:played:${owner}`;
+const DAILY_TTL_SECONDS = 60 * 60 * 24 * 3;
+/** A timed guess still counts this long after the clock runs out (network lag). */
+const GRACE_MS = 2500;
 /** Set (nx) when a game is posted to the leaderboard. */
 export const submittedKey = (id: string) => `game:${id}:lb`;
 
@@ -33,17 +46,40 @@ export const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 
 // ---------- API shapes (shared with the client via `import type`) ----------
 
+/** Which helpers were on when a game started (they can't change mid-game). */
+export interface MapAids {
+  landmarks: boolean;
+  labels: boolean;
+}
+
+/** Why a game can't go on the leaderboard: not a daily, aids on, or not the day's first try. */
+export type Unranked = "classic" | "aids" | "replay";
+
 export interface NewGame {
   id: string;
   rounds: RoundPhoto[];
+  /** The daily's date ("2026-11-26"), for daily games. */
+  day: string | null;
+  /** Seconds per round, for timed (daily) games. */
+  roundSeconds: number | null;
+  ranked: boolean;
+  unranked: Unranked | null;
+}
+
+/** POST /api/game/[id]/start: the round's clock, for timed games. */
+export interface RoundClock {
+  round: number;
+  endsAt: number;
+  serverNow: number;
 }
 
 /** One guessed round, as POST /api/game/[id]/guess returns it. */
 export interface RoundResult {
   /** 0-based round index. */
   round: number;
-  guess: LngLat;
-  distance: number;
+  /** Null when the clock ran out before a pin was in. */
+  guess: LngLat | null;
+  distance: number | null;
   score: number;
   bullseye: boolean;
   /** Running total after this round. */
@@ -121,12 +157,17 @@ interface StoredGame {
   createdAt: number;
   /** playerKey of whoever started it, when known. Only they can post it to the leaderboard. */
   owner?: string;
+  day?: string;
+  /** Per-round time limit, for timed games. */
+  limitMs?: number;
+  ranked?: boolean;
+  unranked?: Unranked;
 }
 
 interface StoredGuess {
-  lat: number;
-  lng: number;
-  distance: number;
+  lat: number | null;
+  lng: number | null;
+  distance: number | null;
   score: number;
   bullseye: boolean;
   at: number;
@@ -153,7 +194,7 @@ function resultFor(game: StoredGame, guesses: StoredGuess[], round: number): Rou
   for (let i = 0; i <= round; i++) total += guesses[i].score;
   return {
     round,
-    guess: { lat: g.lat, lng: g.lng },
+    guess: g.lat === null || g.lng === null ? null : { lat: g.lat, lng: g.lng },
     distance: g.distance,
     score: g.score,
     bullseye: g.bullseye,
@@ -172,9 +213,9 @@ export function areaOf(p: Photo): string {
   return typeof area === "string" && area ? area : "other";
 }
 
-function shuffle<T>(a: T[]): T[] {
+function shuffle<T>(a: T[], rand: () => number = Math.random): T[] {
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -188,7 +229,7 @@ const nearest = (p: Photo, picked: Photo[]) => Math.min(Infinity, ...picked.map(
  * so Central shows up most but North, the medical campus and the athletic campus get their
  * turns too. Within an area it prefers photos far from the ones already chosen.
  */
-export function chooseVaried(candidates: Photo[], n: number): Photo[] {
+export function chooseVaried(candidates: Photo[], n: number, rand: () => number = Math.random): Photo[] {
   const groups = new Map<string, Photo[]>();
   for (const p of candidates) {
     const a = areaOf(p);
@@ -205,7 +246,7 @@ export function chooseVaried(candidates: Photo[], n: number): Photo[] {
     const weights = open.map(
       ([a]) => (Math.sqrt(size.get(a) ?? 1) * (a === "other" ? 0.5 : 1)) / (1 + 2 * (used.get(a) ?? 0)),
     );
-    let r = Math.random() * weights.reduce((s, w) => s + w, 0);
+    let r = rand() * weights.reduce((s, w) => s + w, 0);
     let k = 0;
     while (k < open.length - 1 && (r -= weights[k]) > 0) k++;
     const [area, ps] = open[k];
@@ -219,7 +260,7 @@ export function chooseVaried(candidates: Photo[], n: number): Photo[] {
   let best = picked;
   let clashes = Infinity;
   for (let t = 0; t < 12 && clashes > 0; t++) {
-    const order = shuffle([...picked]);
+    const order = shuffle([...picked], rand);
     const c = order.slice(1).filter((p, i) => areaOf(p) === areaOf(order[i])).length;
     if (c < clashes) [best, clashes] = [order, c];
   }
@@ -236,6 +277,41 @@ async function pickGamePhotos(seen: string[]): Promise<Photo[]> {
   return [];
 }
 
+/** A repeatable random sequence (mulberry32) from a string seed. */
+function seededRandom(seed: string): () => number {
+  let a = createHash("sha256").update(seed).digest().readUInt32LE(0);
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * The day's five photos: drawn from a seed only the server knows (so nobody can work them out
+ * ahead of time), then stored so a deploy mid-day can't change them.
+ */
+async function dailyPhotos(day: string): Promise<Photo[]> {
+  const stored = await kv().get<string[]>(dailyPhotosKey(day));
+  if (Array.isArray(stored) && stored.length === ROUNDS_PER_GAME) {
+    const photos = await Promise.all(stored.map((id) => photoById(id)));
+    if (photos.every(Boolean)) return photos as Photo[];
+  }
+  const rand = seededRandom(hashKey(`daily:${day}`));
+  const picked = chooseVaried(await pickPhotos(CANDIDATES, { minSpacingM: 150, rand }), ROUNDS_PER_GAME, rand);
+  if (picked.length < ROUNDS_PER_GAME) return [];
+  await kv().set(dailyPhotosKey(day), picked.map((p) => p.id), { nx: true, ex: DAILY_TTL_SECONDS });
+  const ids = (await kv().get<string[]>(dailyPhotosKey(day))) ?? picked.map((p) => p.id);
+  const photos = await Promise.all(ids.map((id) => photoById(id)));
+  return photos.every(Boolean) ? (photos as Photo[]) : picked;
+}
+
+/** Whether this player has already started today's daily. */
+export async function playedDaily(playerId: string): Promise<boolean> {
+  return !!(await kv().get(dailyPlayedKey(dailyDate(), playerKey(playerId))));
+}
+
 // ---------- public operations ----------
 
 async function underRateLimit(ipKey: string): Promise<boolean> {
@@ -245,18 +321,41 @@ async function underRateLimit(ipKey: string): Promise<boolean> {
   return n <= RATE_LIMIT_PER_HOUR;
 }
 
-export async function createGame({ playerId, ip }: { playerId?: string | null; ip: string }): Promise<NewGame> {
+export async function createGame({
+  playerId,
+  ip,
+  daily = false,
+  aids = { landmarks: true, labels: true },
+}: {
+  playerId?: string | null;
+  ip: string;
+  daily?: boolean;
+  aids?: MapAids;
+}): Promise<NewGame> {
   const ipKey = hashKey(`ip:${ip}`);
   if (!(await underRateLimit(ipKey))) throw new ApiError("rate-limited", 429);
 
   const owner = playerId ? playerKey(playerId) : undefined;
-  const seenKey = `seen:${owner ?? ipKey}`;
-  const seenRaw = await kv().get<string[]>(seenKey);
-  const seen = Array.isArray(seenRaw) ? seenRaw.filter((s) => typeof s === "string") : [];
-  const photos = await pickGamePhotos(seen);
-  if (photos.length < ROUNDS_PER_GAME) throw new ApiError("no-photos", 503);
+  let game: StoredGame;
+  let seenKey: string | null = null;
+  let seen: string[] = [];
+  if (daily) {
+    const day = dailyDate();
+    const photos = await dailyPhotos(day);
+    if (photos.length < ROUNDS_PER_GAME) throw new ApiError("no-photos", 503);
+    // One shot a day: whatever the first daily start was, later ones only replay it.
+    const first = owner ? await kv().set(dailyPlayedKey(day, owner), 1, { nx: true, ex: DAILY_TTL_SECONDS }) : false;
+    const unranked: Unranked | undefined = !first ? "replay" : aids.landmarks || aids.labels ? "aids" : undefined;
+    game = { photos, createdAt: Date.now(), owner, day, limitMs: DAILY_ROUND_SECONDS * 1000, ranked: !unranked, unranked };
+  } else {
+    seenKey = `seen:${owner ?? ipKey}`;
+    const seenRaw = await kv().get<string[]>(seenKey);
+    seen = Array.isArray(seenRaw) ? seenRaw.filter((s) => typeof s === "string") : [];
+    const photos = await pickGamePhotos(seen);
+    if (photos.length < ROUNDS_PER_GAME) throw new ApiError("no-photos", 503);
+    game = { photos, createdAt: Date.now(), owner, ranked: false, unranked: "classic" };
+  }
 
-  const game: StoredGame = { photos, createdAt: Date.now(), owner };
   let id = "";
   for (let attempt = 0; attempt < 3 && !id; attempt++) {
     const candidate = randomBytes(16).toString("base64url");
@@ -264,11 +363,32 @@ export async function createGame({ playerId, ip }: { playerId?: string | null; i
   }
   if (!id) throw new ApiError("server", 500);
 
-  const ids = photos.map((p) => p.id);
-  await kv().set(seenKey, [...ids, ...seen.filter((s) => !ids.includes(s))].slice(0, SEEN_MAX), {
-    ex: SEEN_TTL_SECONDS,
-  });
-  return { id, rounds: photos.map(toRoundPhoto) };
+  if (seenKey) {
+    const ids = game.photos.map((p) => p.id);
+    await kv().set(seenKey, [...ids, ...seen.filter((s) => !ids.includes(s))].slice(0, SEEN_MAX), {
+      ex: SEEN_TTL_SECONDS,
+    });
+  }
+  return {
+    id,
+    rounds: game.photos.map(toRoundPhoto),
+    day: game.day ?? null,
+    roundSeconds: game.limitMs ? game.limitMs / 1000 : null,
+    ranked: !!game.ranked,
+    unranked: game.ranked ? null : (game.unranked ?? "classic"),
+  };
+}
+
+/** Starts a timed round's clock (once: asking again returns the same clock). */
+export async function startRound(id: string, round: number): Promise<RoundClock> {
+  const game = await loadGame(id);
+  if (!game.limitMs) throw new ApiError("untimed", 400);
+  if (!Number.isInteger(round) || round < 0 || round >= game.photos.length) throw new ApiError("bad-round", 400);
+  const guesses = await loadGuesses(id);
+  if (round > guesses.length) throw new ApiError("out-of-order", 409, { expected: guesses.length });
+  if (await kv().hsetnx(startsKey(id), String(round), Date.now())) await kv().expire(startsKey(id), GAME_TTL_SECONDS);
+  const startedAt = Number(await kv().hget<number>(startsKey(id), String(round)));
+  return { round, endsAt: startedAt + game.limitMs, serverNow: Date.now() };
 }
 
 export async function gameState(id: string): Promise<GameState> {
@@ -293,20 +413,30 @@ export function validGuess(lat: unknown, lng: unknown): LngLat | null {
  * Sending an already guessed round again returns the stored result (safe to retry). The hsetnx
  * makes the first guess for a round win even when two requests race.
  */
-export async function submitGuess(id: string, round: number, guess: LngLat): Promise<RoundResult> {
+export async function submitGuess(id: string, round: number, guess: LngLat | null): Promise<RoundResult> {
   const game = await loadGame(id);
   if (!Number.isInteger(round) || round < 0 || round >= game.photos.length) throw new ApiError("bad-round", 400);
   const guesses = await loadGuesses(id);
   if (round < guesses.length) return resultFor(game, guesses, round);
   if (round > guesses.length) throw new ApiError("out-of-order", 409, { expected: guesses.length });
 
-  const distance = distanceMeters(guess, game.photos[round]);
+  // Timed rounds: a pin that lands after the clock (plus a little grace) scores nothing.
+  let pin = guess;
+  if (game.limitMs) {
+    const startedAt = await kv().hget<number>(startsKey(id), String(round));
+    if (startedAt === null || startedAt === undefined) throw new ApiError("not-started", 409);
+    if (Date.now() > Number(startedAt) + game.limitMs + GRACE_MS) pin = null;
+  } else if (!pin) {
+    throw new ApiError("bad-guess", 400);
+  }
+
+  const distance = pin ? distanceMeters(pin, game.photos[round]) : null;
   const stored: StoredGuess = {
-    lat: guess.lat,
-    lng: guess.lng,
+    lat: pin?.lat ?? null,
+    lng: pin?.lng ?? null,
     distance,
-    score: roundScore(distance),
-    bullseye: isBullseye(distance),
+    score: distance === null ? 0 : roundScore(distance),
+    bullseye: distance !== null && isBullseye(distance),
     at: Date.now(),
   };
   const first = await kv().hsetnx(guessesKey(id), String(round), stored);
@@ -315,9 +445,14 @@ export async function submitGuess(id: string, round: number, guess: LngLat): Pro
 }
 
 /** Server-side totals of a game, for the leaderboard. */
-export async function gameTotals(
-  id: string,
-): Promise<{ complete: boolean; total: number; bullseyes: number; owner?: string }> {
+export async function gameTotals(id: string): Promise<{
+  complete: boolean;
+  total: number;
+  bullseyes: number;
+  owner?: string;
+  day?: string;
+  ranked: boolean;
+}> {
   const game = await loadGame(id);
   const guesses = await loadGuesses(id);
   return {
@@ -325,5 +460,7 @@ export async function gameTotals(
     total: guesses.reduce((s, g) => s + g.score, 0),
     bullseyes: guesses.filter((g) => g.bullseye).length,
     owner: game.owner,
+    day: game.day,
+    ranked: !!game.ranked && !!game.day,
   };
 }

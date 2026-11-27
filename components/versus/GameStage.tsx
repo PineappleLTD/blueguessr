@@ -135,12 +135,14 @@ export default function GameStage({
       {/* Photo */}
       <div
         className={`absolute transition-opacity duration-300 ${
-          revealing ? "pointer-events-none inset-0 opacity-0" : "inset-x-0 top-0 bottom-[50%] opacity-100 lg:bottom-0"
+          revealing
+            ? "pointer-events-none inset-0 opacity-0"
+            : "inset-x-0 top-[62px] bottom-[50%] opacity-100 lg:inset-x-5 lg:top-[92px] lg:bottom-5 lg:overflow-hidden lg:rounded-2xl"
         }`}
       >
         {view.photo && (
           <div className={`h-full w-full transition-[filter,transform] duration-500 ${intro ? "scale-105 blur-2xl" : ""}`}>
-            <PhotoViewer photo={view.photo} />
+            <PhotoViewer photo={view.photo} controlsClassName="right-3 bottom-3 lg:right-auto lg:left-3" />
           </div>
         )}
       </div>
@@ -158,7 +160,7 @@ export default function GameStage({
           resetKey={roundKey}
         />
         {!revealing && (
-          <div className="absolute inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] flex justify-center">
+          <div className="absolute inset-x-3 bottom-[calc(max(0.5rem,env(safe-area-inset-bottom))+1.6rem)] flex justify-center">
             <GuessButton
               fighting={fighting}
               ko={me?.out === "ko"}

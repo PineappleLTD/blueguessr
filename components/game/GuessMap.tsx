@@ -7,7 +7,6 @@ import { CAMPUS } from "@/lib/campus";
 import { bounds, CAMPUS_FALLBACK_BOUNDS } from "@/lib/geo";
 import { LANDMARKS_GEOJSON } from "@/lib/landmarks";
 import { useMapSetting } from "@/lib/map-settings";
-import MapOptions from "./MapOptions";
 import type { LngLat } from "@/lib/types";
 
 export const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -38,8 +37,6 @@ export interface GuessMapProps {
   guessColor?: string;
   /** Change this (e.g. the round number) to reset the view to the whole campus. */
   resetKey?: string | number;
-  /** Show the Landmarks and Map labels checkboxes in the map's top-right corner (default true). */
-  landmarkToggle?: boolean;
   className?: string;
 }
 
@@ -101,7 +98,6 @@ export default function GuessMap({
   pins,
   guessColor = MAIZE,
   resetKey,
-  landmarkToggle = true,
   className = "",
 }: GuessMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -112,6 +108,8 @@ export default function GuessMap({
   const labelsOn = useMapSetting("labels");
   const landmarksOnRef = useRef(landmarksOn);
   const labelsOnRef = useRef(labelsOn);
+  const outlinesOn = useMapSetting("outlines");
+  const outlinesOnRef = useRef(outlinesOn);
   /** The base style's own text layers (streets, stops, places), switched by "Map labels". */
   const baseLabelIds = useRef<string[]>([]);
   /** True while the view should stay fitted to campus (until a reveal or a user pan/zoom). */
@@ -158,7 +156,13 @@ export default function GuessMap({
         const firstSymbol = baseSymbols[0];
         map.addSource("campus", { type: "geojson", data: CAMPUS as unknown as GeoJSON.FeatureCollection });
         map.addLayer(
-          { id: "campus-fill", type: "fill", source: "campus", paint: { "fill-color": MAIZE, "fill-opacity": 0.1 } },
+          {
+            id: "campus-fill",
+            type: "fill",
+            source: "campus",
+            layout: { visibility: outlinesOnRef.current ? "visible" : "none" },
+            paint: { "fill-color": MAIZE, "fill-opacity": 0.1 },
+          },
           firstSymbol,
         );
         map.addLayer(
@@ -166,6 +170,7 @@ export default function GuessMap({
             id: "campus-line",
             type: "line",
             source: "campus",
+            layout: { visibility: outlinesOnRef.current ? "visible" : "none" },
             paint: { "line-color": GOLD, "line-width": 2.5, "line-opacity": 0.9 },
           },
           firstSymbol,
@@ -256,6 +261,13 @@ export default function GuessMap({
     for (const id of baseLabelIds.current) map.setLayoutProperty(id, "visibility", labelsOn ? "visible" : "none");
   }, [labelsOn, ready]);
 
+  useEffect(() => {
+    outlinesOnRef.current = outlinesOn;
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const id of ["campus-fill", "campus-line"]) map.setLayoutProperty(id, "visibility", outlinesOn ? "visible" : "none");
+  }, [outlinesOn, ready]);
+
   // Cursor shows whether clicks do anything.
   useEffect(() => {
     const canvas = mapRef.current?.getCanvas();
@@ -325,7 +337,6 @@ export default function GuessMap({
   return (
     <div className={`relative h-full w-full ${className}`}>
       <div ref={containerRef} className="h-full w-full" />
-      {landmarkToggle && <MapOptions className="absolute top-2 right-2 z-10" />}
     </div>
   );
 }

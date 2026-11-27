@@ -2,9 +2,10 @@
 
 import "./solo.css";
 import { Unplug } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import PhotoViewer from "@/components/game/PhotoViewer";
-import type { RoundResult } from "@/lib/game";
+import type { RoundResult, Unranked } from "@/lib/game";
+import { getMapSetting } from "@/lib/map-settings";
 import type { LngLat, RoundPhoto } from "@/lib/types";
 import { ApiFailure, safePlayer, soloApi } from "./api";
 import Confetti, { type ConfettiHandle } from "./Confetti";
@@ -17,24 +18,9 @@ import RevealPanel, { BullseyeBurst } from "./RevealPanel";
 import StartScreen from "./StartScreen";
 import Summary from "./Summary";
 
-/** This tab's unfinished game, so a reload (or a phone dropping the tab) picks it back up. */
-const SAVE_KEY = "blueguessr:solo-game";
-const save = (id: string | null) => {
-  try {
-    if (id) sessionStorage.setItem(SAVE_KEY, id);
-    else sessionStorage.removeItem(SAVE_KEY);
-  } catch {}
-};
-const saved = () => {
-  try {
-    return sessionStorage.getItem(SAVE_KEY);
-  } catch {
-    return null;
-  }
-};
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Status = "loading" | "countdown" | "round" | "reveal" | "summary" | "error";
+type Status = "setup" | "loading" | "countdown" | "round" | "reveal" | "summary" | "error";
 
 interface State {
   status: Status;
@@ -52,11 +38,29 @@ interface State {
   /** First photo loaded: the countdown may run. */
   ready: boolean;
   error: ErrorKind;
+  /** Daily games: the day, and seconds per round. */
+  day: string | null;
+  roundSeconds: number | null;
+  ranked: boolean;
+  unranked: Unranked | null;
+  /** Timed rounds: when this round's clock runs out (local time), and which round it is for. */
+  endsAt: number | null;
+  clockFor: number | null;
 }
 
 type Action =
+  | { type: "setup" }
   | { type: "new" }
-  | { type: "loaded"; id: string; rounds: RoundPhoto[]; results: RoundResult[] }
+  | {
+      type: "loaded";
+      id: string;
+      rounds: RoundPhoto[];
+      day: string | null;
+      roundSeconds: number | null;
+      ranked: boolean;
+      unranked: Unranked | null;
+    }
+  | { type: "clock"; round: number; endsAt: number }
   | { type: "ready" }
   | { type: "go" }
   | { type: "pin"; p: LngLat }
@@ -68,7 +72,7 @@ type Action =
   | { type: "fail"; error: ErrorKind };
 
 const INITIAL: State = {
-  status: "loading",
+  status: "setup",
   run: 0,
   gameId: null,
   rounds: [],
@@ -80,25 +84,36 @@ const INITIAL: State = {
   sheet: false,
   ready: false,
   error: "server",
+  day: null,
+  roundSeconds: null,
+  ranked: false,
+  unranked: null,
+  endsAt: null,
+  clockFor: null,
 };
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
-    case "new":
+    case "setup":
       return { ...INITIAL, run: s.run + 1 };
-    case "loaded": {
-      const index = a.results.length;
+    case "new":
+      return { ...INITIAL, run: s.run + 1, status: "loading" };
+    case "loaded":
       return {
         ...s,
         gameId: a.id,
         rounds: a.rounds,
-        results: a.results,
-        index,
+        results: [],
+        index: 0,
         guess: null,
-        // A resumed game skips the countdown.
-        status: index === 0 ? "countdown" : "round",
+        status: "countdown",
+        day: a.day,
+        roundSeconds: a.roundSeconds,
+        ranked: a.ranked,
+        unranked: a.unranked,
       };
-    }
+    case "clock":
+      return a.round === s.index ? { ...s, endsAt: a.endsAt, clockFor: a.round } : s;
     case "ready":
       return { ...s, ready: true };
     case "go":
@@ -120,7 +135,7 @@ function reducer(s: State, a: Action): State {
     case "next":
       if (s.status !== "reveal") return s;
       if (s.index >= s.rounds.length - 1) return { ...s, status: "summary" };
-      return { ...s, status: "round", index: s.index + 1, guess: null, sheet: false };
+      return { ...s, status: "round", index: s.index + 1, guess: null, sheet: false, endsAt: null };
     case "fail":
       return { ...s, status: "error", error: a.error, sending: false };
   }
@@ -132,8 +147,11 @@ function errorKind(e: unknown): ErrorKind {
   return "server";
 }
 
-/** The solo game: countdown, five rounds of guess + reveal, then the summary. */
-export default function SoloGame() {
+/**
+ * The solo game: pick the map helpers and start, countdown, five rounds of guess + reveal, then
+ * the summary. `daily` plays the Daily BlueGuessr: today's five photos, 30 seconds a round.
+ */
+export default function SoloGame({ daily = false }: { daily?: boolean }) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
   const phone = useIsPhone();
   const confetti = useRef<ConfettiHandle>(null);
@@ -145,48 +163,69 @@ export default function SoloGame() {
     stateRef.current = state;
   });
 
-  const start = useCallback(async (resume: boolean) => {
+  const start = useCallback(async () => {
     const token = ++runRef.current;
     dispatch({ type: "new" });
     try {
-      let game: { id: string; rounds: RoundPhoto[]; results: RoundResult[] } | null = null;
-      const savedId = resume ? saved() : null;
-      if (savedId) {
-        try {
-          const st = await soloApi.state(savedId);
-          if (!st.done && st.rounds.length) game = st;
-        } catch {}
-      }
-      if (!game) {
-        save(null);
-        game = { ...(await soloApi.newGame(safePlayer()?.id)), results: [] };
-      }
+      const game = await soloApi.newGame({
+        playerId: safePlayer()?.id,
+        daily,
+        landmarks: getMapSetting("landmarks"),
+        labels: getMapSetting("labels"),
+      });
       if (token !== runRef.current) return;
-      save(game.id);
       dispatch({ type: "loaded", ...game });
-      const i = game.results.length;
-      await Promise.race([preloadImage(game.rounds[i].src, "high"), sleep(3500)]);
+      await Promise.race([preloadImage(game.rounds[0].src, "high"), sleep(3500)]);
       if (token !== runRef.current) return;
       dispatch({ type: "ready" });
-      if (game.rounds[i + 1]) void preloadImage(game.rounds[i + 1].src);
+      if (game.rounds[1]) void preloadImage(game.rounds[1].src);
     } catch (e) {
       if (token === runRef.current) dispatch({ type: "fail", error: errorKind(e) });
     }
-  }, []);
+  }, [daily]);
 
-  // Start (or resume) on mount. The timer keeps React's dev double-mount from starting two games.
+  // Daily: whether this player already started today's (only the first try is ranked).
+  const [dailyStatus, setDailyStatus] = useState<{ day: string; played: boolean } | null>(null);
+  const atSetup = state.status === "setup";
   useEffect(() => {
-    const t = setTimeout(() => void start(true), 0);
-    return () => clearTimeout(t);
-  }, [start]);
+    if (!daily || !atSetup) return;
+    let alive = true;
+    soloApi
+      .daily(safePlayer()?.id)
+      .then((d) => alive && setDailyStatus(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [daily, atSetup]);
 
-  const sendGuess = useCallback(async () => {
+  // Timed rounds: start the server's clock when a round begins (the server keeps the time).
+  const clockRound = state.status === "round" && state.roundSeconds && state.clockFor !== state.index ? state.index : null;
+  const clockGame = state.gameId;
+  useEffect(() => {
+    if (clockRound === null || !clockGame) return;
+    const token = runRef.current;
+    soloApi
+      .startRound(clockGame, clockRound)
+      .then((c) => {
+        if (token === runRef.current) dispatch({ type: "clock", round: c.round, endsAt: Date.now() + (c.endsAt - c.serverNow) });
+      })
+      .catch(() => {
+        if (token === runRef.current) dispatch({ type: "send-failed" });
+      });
+  }, [clockRound, clockGame]);
+
+  /** Sends the pin. `timeUp`: the round's clock ran out, so send whatever there is (maybe nothing). */
+  const sendGuess = useCallback(async (timeUp = false) => {
     const s = stateRef.current;
-    if (s.status !== "round" || !s.guess || s.sending || !s.gameId) return;
+    if (s.status !== "round" || s.sending || !s.gameId) return;
+    if (!s.guess && !timeUp) return;
     const { gameId, index, guess } = s;
     const token = runRef.current;
     dispatch({ type: "send" });
     try {
+      // A guess right as the round opens can beat its clock to the server: start it first.
+      if (s.roundSeconds && s.clockFor !== index) await soloApi.startRound(gameId, index).catch(() => {});
       let result: RoundResult;
       try {
         result = await soloApi.guess(gameId, index, guess);
@@ -199,16 +238,26 @@ export default function SoloGame() {
     } catch (e) {
       if (token !== runRef.current) return;
       if (e instanceof ApiFailure && e.status === 404) dispatch({ type: "fail", error: "expired" });
-      else if (e instanceof ApiFailure && e.code === "out-of-order") void start(true);
+      else if (e instanceof ApiFailure && e.code === "out-of-order") dispatch({ type: "fail", error: "server" });
       else dispatch({ type: "send-failed" });
     }
-  }, [start]);
+  }, []);
+
+  // Timed rounds: when the clock runs out, the pin (or no pin) goes in by itself.
+  const { endsAt } = state;
+  useEffect(() => {
+    if (state.status !== "round" || endsAt === null) return;
+    const t = setTimeout(() => void sendGuess(true), Math.max(0, endsAt - Date.now()));
+    return () => clearTimeout(t);
+  }, [state.status, endsAt, sendGuess]);
 
   const onGuess = useCallback((p: LngLat) => dispatch({ type: "pin", p }), []);
   const onSheet = useCallback((open: boolean) => dispatch({ type: "sheet", open }), []);
   const go = useCallback(() => dispatch({ type: "go" }), []);
   const next = useCallback(() => dispatch({ type: "next" }), []);
-  const playAgain = useCallback(() => void start(false), [start]);
+  const playAgain = useCallback(() => dispatch({ type: "setup" }), []);
+  const retry = useCallback(() => void start(), [start]);
+  const begin = useCallback(() => void start(), [start]);
   const celebrate = useCallback((power: number) => {
     confetti.current?.burst({ x: 0.28, y: 0.4, power });
     setTimeout(() => confetti.current?.burst({ x: 0.72, y: 0.45, power: power * 0.8 }), 160);
@@ -230,17 +279,19 @@ export default function SoloGame() {
       } else if (s.status === "countdown" && s.ready) {
         e.preventDefault();
         dispatch({ type: "go" });
+      } else if (s.status === "setup") {
+        e.preventDefault();
+        void start();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sendGuess]);
+  }, [sendGuess, start]);
 
   // Per-round side effects: preload the photo after this one, celebrate bullseyes, forget finished games.
   const { status, index, rounds, results, run } = state;
   useEffect(() => {
     if (status === "round" && rounds[index + 1]) void preloadImage(rounds[index + 1].src);
-    if (status === "summary") save(null);
     if (status !== "reveal") return;
     revealAt.current = performance.now();
     if (!results[index]?.bullseye) return;
@@ -267,7 +318,7 @@ export default function SoloGame() {
   // Stable object: the map refits whenever the answer prop changes identity.
   const answer = useMemo(() => (result ? { lat: result.reveal.lat, lng: result.reveal.lng } : null), [result]);
 
-  if (status === "error") return <ErrorScreen kind={state.error} onRetry={playAgain} />;
+  if (status === "error") return <ErrorScreen kind={state.error} onRetry={retry} />;
 
   if (status === "summary" && state.gameId) {
     return (
@@ -277,6 +328,9 @@ export default function SoloGame() {
           gameId={state.gameId}
           rounds={rounds}
           results={results}
+          daily={!!state.day}
+          ranked={state.ranked}
+          unranked={state.unranked}
           onPlayAgain={playAgain}
           celebrate={celebrate}
         />
@@ -302,7 +356,16 @@ export default function SoloGame() {
         </div>
       )}
 
-      {playing && <Hud index={index} count={rounds.length} results={results} total={total} />}
+      {playing && (
+        <Hud
+          index={index}
+          count={rounds.length}
+          results={results}
+          total={total}
+          endsAt={status === "round" ? state.endsAt : null}
+          seconds={state.roundSeconds}
+        />
+      )}
       {status === "round" && <RoundBanner key={`banner-${run}-${index}`} n={index + 1} last={index === rounds.length - 1} />}
 
       {state.gameId && status !== "loading" && (
@@ -347,8 +410,16 @@ export default function SoloGame() {
         </div>
       )}
 
-      {(status === "loading" || status === "countdown") && (
-        <StartScreen key={`start-${run}`} ready={status === "countdown" && state.ready} onGo={go} />
+      {(status === "setup" || status === "loading" || status === "countdown") && (
+        <StartScreen
+          phase={status === "setup" ? "setup" : "countdown"}
+          daily={daily}
+          day={dailyStatus?.day ?? null}
+          playedToday={!!dailyStatus?.played}
+          ready={status === "countdown" && state.ready}
+          onStart={begin}
+          onGo={go}
+        />
       )}
       <Confetti ref={confetti} />
     </div>

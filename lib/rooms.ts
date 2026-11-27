@@ -165,6 +165,8 @@ interface RoomState {
   draw: boolean;
   results: RoundResult[];
   usedPhotoIds: string[];
+  /** Seconds per round, picked by the host when starting (kept for rematches). */
+  roundSeconds?: number;
 }
 
 interface Ctx {
@@ -381,14 +383,14 @@ function remember(used: string[], id: string): string[] {
   return [...used.filter((x) => x !== id), id].slice(-USED_PHOTOS_KEPT);
 }
 
-function roundStart(round: number, photo: Photo, now: number) {
+function roundStart(round: number, photo: Photo, now: number, seconds: number) {
   const startsAt = now + INTRO_MS;
   return {
     phase: "round" as const,
     round,
     photo,
     startsAt,
-    deadline: startsAt + VERSUS_ROUND_SECONDS * 1000,
+    deadline: startsAt + seconds * 1000,
     revealEndsAt: 0,
     final: false,
   };
@@ -558,11 +560,20 @@ async function advanceReveal(fresh: RoomState, skip: boolean): Promise<RoomState
     fresh.results.map((r) => r.photoId),
   );
   if (!photo) return { ...fresh, phase: "finished", photo: null, final: true, draw: !fresh.winner };
-  return { ...fresh, ...roundStart(fresh.round + 1, photo, now), usedPhotoIds: remember(fresh.usedPhotoIds, photo.id) };
+  return {
+    ...fresh,
+    ...roundStart(fresh.round + 1, photo, now, fresh.roundSeconds ?? VERSUS_ROUND_SECONDS),
+    usedPhotoIds: remember(fresh.usedPhotoIds, photo.id),
+  };
 }
 
 /** A fresh game from the current members: lobby -> round 1 (start), finished -> round 1 (rematch). */
-async function newGame(fresh: RoomState, from: RoomPhase, byKey: string): Promise<RoomState | RoomError> {
+async function newGame(
+  fresh: RoomState,
+  from: RoomPhase,
+  byKey: string,
+  seconds: number | null,
+): Promise<RoomState | RoomError> {
   if (fresh.phase !== from) return "wrong_phase";
   const ctx = await loadAround(fresh);
   const now = Date.now();
@@ -589,7 +600,8 @@ async function newGame(fresh: RoomState, from: RoomPhase, byKey: string): Promis
     winner: null,
     draw: false,
     usedPhotoIds: remember(fresh.usedPhotoIds, photo.id),
-    ...roundStart(1, photo, now),
+    roundSeconds: seconds ?? fresh.roundSeconds ?? VERSUS_ROUND_SECONDS,
+    ...roundStart(1, photo, now, seconds ?? fresh.roundSeconds ?? VERSUS_ROUND_SECONDS),
   };
 }
 
@@ -687,6 +699,7 @@ function buildView(ctx: Ctx, viewerKey: string | null, now: number): RoomView {
     multiplier: room.round ? damageMultiplier(room.round) : 1,
     maxHp: VERSUS_START_HP,
     maxPlayers: VERSUS_MAX_PLAYERS,
+    roundSeconds: room.roundSeconds ?? VERSUS_ROUND_SECONDS,
     me,
     players,
     watchers,
@@ -890,7 +903,12 @@ export async function leaveRoom(code: string, secret: string | null): Promise<Ro
   return { status: 200, body: {} };
 }
 
-export async function startGame(code: string, secret: string | null, kind: "start" | "rematch"): Promise<RoomResult> {
+export async function startGame(
+  code: string,
+  secret: string | null,
+  kind: "start" | "rematch",
+  seconds: number | null = null,
+): Promise<RoomResult> {
   if (!secret) return fail("no_player");
   const o = await open(code, secret);
   if ("status" in o) return o;
@@ -902,7 +920,7 @@ export async function startGame(code: string, secret: string | null, kind: "star
     // Already started (double click, or someone else's click won): just show where things are.
     return ctx.room.phase === "lobby" || ctx.room.phase === "finished" ? fail("wrong_phase", buildView(ctx, key, Date.now())) : ok(ctx, key);
   }
-  const t = await transition(ctx.room, (fresh) => newGame(fresh, from, key!));
+  const t = await transition(ctx.room, (fresh) => newGame(fresh, from, key!, seconds));
   if (t.changed) ctx = await loadAround(t.room);
   if (t.error && t.error !== "busy") return fail(t.error, buildView(ctx, key, Date.now()));
   return ok(ctx, key);

@@ -1,12 +1,12 @@
 "use client";
 
 // Types only: these server modules never reach the browser bundle.
-import type { GameState, NewGame, RoundResult } from "@/lib/game";
+import type { GameState, NewGame, RoundClock, RoundResult } from "@/lib/game";
 import type { LeaderboardData, Period, SubmitResult } from "@/lib/leaderboard";
 import { getPlayer, type LocalPlayer } from "@/lib/player";
 import type { LngLat } from "@/lib/types";
 
-export type { GameState, NewGame, RoundResult } from "@/lib/game";
+export type { GameState, NewGame, RoundClock, RoundResult, Unranked } from "@/lib/game";
 export type { LeaderboardData, LeaderboardEntry, Period, SubmitResult } from "@/lib/leaderboard";
 
 /** An API call that failed: `code` is the server's error code, or "network". */
@@ -38,12 +38,17 @@ async function call<T>(url: string, init?: { method?: string; body?: unknown }):
 }
 
 export const soloApi = {
-  newGame: (playerId?: string) => call<NewGame>("/api/game", { method: "POST", body: { playerId } }),
+  newGame: (body: { playerId?: string; daily: boolean; landmarks: boolean; labels: boolean }) =>
+    call<NewGame>("/api/game", { method: "POST", body }),
+  daily: (playerId?: string) => call<{ day: string; played: boolean }>("/api/daily", { method: "POST", body: { playerId } }),
+  startRound: (id: string, round: number) =>
+    call<RoundClock>(`/api/game/${encodeURIComponent(id)}/start`, { method: "POST", body: { round } }),
   state: (id: string) => call<GameState>(`/api/game/${encodeURIComponent(id)}`),
-  guess: (id: string, round: number, p: LngLat) =>
+  /** `null` ends a timed round that ran out without a pin. */
+  guess: (id: string, round: number, p: LngLat | null) =>
     call<RoundResult>(`/api/game/${encodeURIComponent(id)}/guess`, {
       method: "POST",
-      body: { round, lat: p.lat, lng: p.lng },
+      body: p ? { round, lat: p.lat, lng: p.lng } : { round, timeout: true },
     }),
   leaderboard: (period: Period, me?: string) =>
     call<LeaderboardData>(`/api/leaderboard?period=${period}${me ? `&me=${encodeURIComponent(me)}` : ""}`),

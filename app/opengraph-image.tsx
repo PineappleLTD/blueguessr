@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { geoBounds, geoGraticule, geoOrthographic, geoPath, type GeoPermissibleObjects } from "d3";
+import { geoGraticule, geoOrthographic, geoPath, type GeoPermissibleObjects } from "d3";
 import { ImageResponse } from "next/og";
 
 export const alt = "BlueGuessr";
@@ -17,17 +17,7 @@ const land = JSON.parse(await readFile(join(process.cwd(), "public/geo/ne_110m_l
 
 const ANN_ARBOR: [number, number] = [-83.7382, 42.278];
 
-function inRing([x, y]: [number, number], ring: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-/** The landing's dotted globe, drawn as SVG: Michigan up top, rising out of the bottom edge. */
+/** The landing's wireframe globe, drawn as SVG: Michigan up top, rising out of the bottom edge. */
 function globeSvg(): string {
   const r = 400;
   const cx = 600;
@@ -35,28 +25,6 @@ function globeSvg(): string {
   const rotate: [number, number] = [86, -12];
   const projection = geoOrthographic().scale(r).translate([cx, cy]).rotate(rotate).clipAngle(90);
   const path = geoPath(projection);
-  const center: [number, number] = [-rotate[0], -rotate[1]];
-  const cosC = Math.cos((center[1] * Math.PI) / 180);
-  const sinC = Math.sin((center[1] * Math.PI) / 180);
-
-  const dots: string[] = [];
-  for (const feature of land.features) {
-    const polygons = (
-      feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates
-    ) as number[][][][];
-    const [[x0, y0], [x1, y1]] = geoBounds(feature as GeoPermissibleObjects);
-    for (let lng = x0; lng <= x1; lng += 1.15) {
-      for (let lat = y0; lat <= y1; lat += 1.15) {
-        // Near side only.
-        const phi = (lat * Math.PI) / 180;
-        const dl = ((lng - center[0]) * Math.PI) / 180;
-        if (sinC * Math.sin(phi) + cosC * Math.cos(phi) * Math.cos(dl) <= 0) continue;
-        if (!polygons.some((poly) => inRing([lng, lat], poly[0]) && !poly.slice(1).some((h) => inRing([lng, lat], h)))) continue;
-        const p = projection([lng, lat]);
-        if (p && p[1] < 640) dots.push(`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2"/>`);
-      }
-    }
-  }
   const [mx, my] = projection(ANN_ARBOR) ?? [cx, cy];
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
@@ -66,7 +34,6 @@ function globeSvg(): string {
   <circle cx="${cx}" cy="${cy}" r="${r}" fill="#00274C"/>
   <path d="${path(geoGraticule()()) ?? ""}" fill="none" stroke="#FFCB05" stroke-opacity="0.25" stroke-width="1.5"/>
   <path d="${path(land as GeoPermissibleObjects) ?? ""}" fill="none" stroke="#FFCB05" stroke-width="1.5"/>
-  <g fill="#E8A317">${dots.join("")}</g>
   <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#FFCB05" stroke-width="4"/>
   <circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="20" fill="none" stroke="#FFCB05" stroke-width="3" stroke-opacity="0.6"/>
   <circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="9" fill="#FFCB05"/>

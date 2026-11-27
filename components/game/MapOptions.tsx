@@ -6,6 +6,7 @@ import { setMapSetting, useMapSetting, type MapSetting } from "@/lib/map-setting
 const OPTIONS: { key: MapSetting; label: string }[] = [
   { key: "landmarks", label: "Landmarks" },
   { key: "labels", label: "Map labels" },
+  { key: "outlines", label: "Campus outlines" },
 ];
 
 const SIZES = {
@@ -30,7 +31,7 @@ function Toggle({ setting, label, size }: { setting: MapSetting; label: string; 
   );
 }
 
-/** Landmarks and map-label checkboxes, with a warning while labels are off. */
+/** The map's checkboxes, picked before a game starts, with a warning while labels are off. */
 export default function MapOptions({
   size = "sm",
   align = "end",
@@ -43,7 +44,7 @@ export default function MapOptions({
   const labels = useMapSetting("labels");
   return (
     <div className={`flex flex-col gap-1.5 ${align === "end" ? "items-end" : "items-center"} ${className}`}>
-      <div className="flex gap-1.5">
+      <div className={`flex flex-wrap gap-1.5 ${align === "end" ? "justify-end" : "justify-center"}`}>
         {OPTIONS.map((o) => (
           <Toggle key={o.key} setting={o.key} label={o.label} size={size} />
         ))}

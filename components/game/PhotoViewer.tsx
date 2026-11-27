@@ -8,7 +8,16 @@ import type { RoundPhoto } from "@/lib/types";
  * Fills its container with the round's photo. Scroll / pinch / buttons to zoom,
  * drag to pan, double-click to reset. A blurred copy fills any letterboxing.
  */
-export default function PhotoViewer({ photo, className = "" }: { photo: RoundPhoto; className?: string }) {
+export default function PhotoViewer({
+  photo,
+  className = "",
+  controlsClassName = "right-3 bottom-3",
+}: {
+  photo: RoundPhoto;
+  className?: string;
+  /** Where the zoom buttons sit. */
+  controlsClassName?: string;
+}) {
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [loaded, setLoaded] = useState(false);
   const [gesturing, setGesturing] = useState(false);
@@ -128,7 +137,7 @@ export default function PhotoViewer({ photo, className = "" }: { photo: RoundPho
           aria-hidden
         />
       )}
-      <div className="absolute right-3 bottom-3 flex flex-col gap-2" onPointerDown={(e) => e.stopPropagation()}>
+      <div className={`absolute flex flex-col gap-2 ${controlsClassName}`} onPointerDown={(e) => e.stopPropagation()}>
         {[
           { icon: Plus, label: "Zoom in", on: () => zoomBy(1.4) },
           { icon: Minus, label: "Zoom out", on: () => zoomBy(1 / 1.4) },

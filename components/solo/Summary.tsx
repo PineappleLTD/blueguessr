@@ -1,60 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { RotateCcw, Target, Trophy } from "lucide-react";
+import { CalendarDays, Gamepad2, RotateCcw, Target, Trophy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import PhotoCredit from "@/components/game/PhotoCredit";
 import Header from "@/components/site/Header";
-import type { RoundResult } from "@/lib/game";
+import Screen from "@/components/site/Screen";
+import type { RoundResult, Unranked } from "@/lib/game";
 import { formatDistance } from "@/lib/geo";
 import { MAX_GAME_SCORE, MAX_ROUND_SCORE } from "@/lib/scoring";
 import type { RoundPhoto } from "@/lib/types";
-import DotDunes from "./DotDunes";
 import { fmt, useCountUp, useElapsed, useIsWide } from "./hooks";
 import SubmitScore from "./SubmitScore";
 import SummaryMap, { type SummaryRound } from "./SummaryMap";
-import { tierFor, type Tier } from "./tiers";
-import Footer from "@/components/site/Footer";
 
 const COUNT_MS = 1700;
 
-function TierBadge({ tier }: { tier: Tier }) {
-  const Icon = tier.icon;
-  return (
-    <div
-      className="sg-stamp inline-flex items-center gap-3 rounded-2xl p-1.5 pr-5"
-      style={{
-        background: `linear-gradient(180deg, ${tier.from}, ${tier.to})`,
-        boxShadow: "0 6px 0 oklch(0 0 0 / 0.35), 0 16px 34px oklch(0 0 0 / 0.35)",
-      }}
-    >
-      <span className="grid size-14 place-items-center rounded-xl bg-white/25 shadow-inner">
-        <Icon className="size-8" strokeWidth={2.4} style={{ color: tier.ink }} />
-      </span>
-      <span className="text-display text-3xl sm:text-4xl" style={{ color: tier.ink }}>
-        {tier.name}
-      </span>
-    </div>
-  );
-}
-
-/** End of a game: total, tier badge, rounds, map of every answer, leaderboard post, play again. */
+/** End of a game: total, bullseyes, rounds, map of every answer, leaderboard post, play again. */
 export default function Summary({
   gameId,
   rounds,
   results,
+  daily,
+  ranked,
+  unranked,
   onPlayAgain,
   celebrate,
 }: {
   gameId: string;
   rounds: RoundPhoto[];
   results: RoundResult[];
+  daily: boolean;
+  ranked: boolean;
+  unranked: Unranked | null;
   onPlayAgain: () => void;
   celebrate: (power: number) => void;
 }) {
   const total = results.reduce((s, r) => s + r.score, 0);
   const bullseyes = results.filter((r) => r.bullseye).length;
-  const tier = tierFor(total);
   const shown = useCountUp(total, { duration: COUNT_MS, delay: 250 });
   const showTier = useElapsed(gameId, COUNT_MS + 300);
   const wide = useIsWide();
@@ -79,12 +62,8 @@ export default function Summary({
   );
 
   return (
-    <div className="relative flex min-h-dvh flex-col bg-night">
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 h-[36vh] opacity-35">
-        <DotDunes rows={8} speed={0.5} />
-      </div>
-      <Header />
-      <main className="relative z-10 mx-auto grid w-full max-w-6xl gap-5 px-4 pb-14 sm:px-6 lg:grid-cols-[minmax(0,460px)_minmax(0,1fr)] lg:items-start">
+    <Screen header={<Header />}>
+      <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 pb-10 sm:px-6 lg:grid-cols-[minmax(0,460px)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-4">
           <section className="panel sg-up relative overflow-hidden p-5 sm:p-6">
             <div
@@ -99,7 +78,6 @@ export default function Summary({
               <span className="text-display mb-1.5 text-2xl text-maize-soft/45 tabular-nums">/ {fmt(MAX_GAME_SCORE)}</span>
             </div>
             <div className="mt-4 flex min-h-[4.5rem] flex-wrap items-center gap-3">
-              {showTier && <TierBadge tier={tier} />}
               {showTier && bullseyes > 0 && (
                 <span className="text-display sg-up inline-flex items-center gap-1.5 rounded-xl border border-maize/40 bg-mblue px-3 py-2 text-2xl text-maize">
                   <Target className="size-5" strokeWidth={2.6} />
@@ -109,13 +87,20 @@ export default function Summary({
             </div>
           </section>
 
-          <SubmitScore gameId={gameId} />
+          {ranked ? <SubmitScore gameId={gameId} /> : <UnrankedNote why={unranked} />}
 
           <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={onPlayAgain} className="btn-game py-4 text-2xl">
-              <RotateCcw className="size-5" strokeWidth={2.8} />
-              Play again
-            </button>
+            {daily ? (
+              <Link href="/play" className="btn-game py-4 text-2xl">
+                <Gamepad2 className="size-5" strokeWidth={2.6} />
+                Solo
+              </Link>
+            ) : (
+              <button type="button" onClick={onPlayAgain} className="btn-game py-4 text-2xl">
+                <RotateCcw className="size-5" strokeWidth={2.8} />
+                Play again
+              </button>
+            )}
             <Link href="/leaderboard" className="btn-game btn-game-blue py-4 text-2xl">
               <Trophy className="size-5" strokeWidth={2.6} />
               Leaderboard
@@ -149,7 +134,7 @@ export default function Summary({
                       <span className="text-display text-2xl text-maize tabular-nums">{fmt(r.score)}</span>
                       <span className="text-display flex items-center gap-1 text-lg text-maize-soft/70 tabular-nums">
                         {r.bullseye && <Target className="size-4 text-maize" strokeWidth={2.8} />}
-                        {formatDistance(r.distance)}
+                        {r.distance === null ? "Time" : formatDistance(r.distance)}
                       </span>
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-mblue-deep">
@@ -167,8 +152,28 @@ export default function Summary({
         </div>
 
         {wide && <div className="sticky top-4 h-[calc(100dvh-2rem)] max-h-[860px] min-h-[520px]">{map}</div>}
-      </main>
-      <Footer waves={false} solid={false} className="relative z-10 mt-auto" />
+      </div>
+    </Screen>
+  );
+}
+
+/** In place of the leaderboard form when this game can't go on the board. */
+function UnrankedNote({ why }: { why: Unranked | null }) {
+  const text = why === "replay" ? "Played today: not ranked" : why === "aids" ? "Not ranked: landmarks or map labels on" : null;
+  return (
+    <div className="panel flex items-center gap-3 p-4">
+      <Trophy className="size-5 shrink-0 text-maize-soft/60" strokeWidth={2.6} />
+      {text ? (
+        <span className="text-display text-xl text-maize-soft/75">{text}</span>
+      ) : (
+        <>
+          <span className="text-display flex-1 text-xl text-maize-soft/75">Leaderboard is the Daily</span>
+          <Link href="/daily" className="btn-game shrink-0 px-4 py-2.5 text-lg">
+            <CalendarDays className="size-4.5" strokeWidth={2.6} />
+            Daily
+          </Link>
+        </>
+      )}
     </div>
   );
 }

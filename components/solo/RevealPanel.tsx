@@ -8,7 +8,6 @@ import { MAX_ROUND_SCORE } from "@/lib/scoring";
 import type { RoundPhoto } from "@/lib/types";
 import { fmt, useCountUp } from "./hooks";
 import { PHONE_PANEL_DVH } from "./MapDock";
-import { reaction } from "./tiers";
 
 const noFocus = (e: React.MouseEvent) => e.preventDefault();
 
@@ -32,9 +31,6 @@ export default function RevealPanel({
 
   const score = (
     <div className="min-w-0">
-      <p className={`text-display sg-up text-xl ${bull ? "text-maize" : "text-maize-soft/80"}`} style={{ animationDelay: "500ms" }}>
-        {reaction(result.distance, bull)}
-      </p>
       <p className="text-display flex items-baseline gap-1.5 text-maize-gradient">
         <span className={`tabular-nums ${phone ? "text-6xl" : "text-7xl"}`}>{fmt(shown)}</span>
         <span className="text-2xl">pts</span>
@@ -48,7 +44,7 @@ export default function RevealPanel({
       style={{ animationDelay: "350ms" }}
     >
       {bull ? <Target className="size-5" strokeWidth={2.6} /> : <Ruler className="size-5" strokeWidth={2.4} />}
-      <span className="text-display text-3xl tabular-nums">{formatDistance(result.distance)}</span>
+      <span className="text-display text-3xl tabular-nums">{result.distance === null ? "Time" : formatDistance(result.distance)}</span>
     </div>
   );
 

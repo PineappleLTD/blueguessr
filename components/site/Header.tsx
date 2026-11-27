@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import AccountButton from "./AccountButton";
 import HeaderNav from "./HeaderNav";
-import { MenuButtonPlaceholder, NavList } from "./NavList";
+import { NavList } from "./NavList";
 
 /** Top bar used on every page except the in-game screens. */
 export default function Header({ className = "" }: { className?: string }) {
@@ -23,14 +23,7 @@ export default function Header({ className = "" }: { className?: string }) {
       </Link>
       {/* The active tab reads the URL, which can suspend on dynamic routes: keep the rest static. */}
       <div className="flex items-center gap-1.5">
-        <Suspense
-          fallback={
-            <>
-              <NavList pathname={null} />
-              <MenuButtonPlaceholder />
-            </>
-          }
-        >
+        <Suspense fallback={<NavList pathname={null} />}>
           <HeaderNav />
         </Suspense>
         <AccountButton />

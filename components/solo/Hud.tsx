@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { Star, Timer } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { RoundResult } from "@/lib/game";
 import { MAX_ROUND_SCORE } from "@/lib/scoring";
 import { fmt, useCountUp } from "./hooks";
@@ -12,11 +13,17 @@ export default function Hud({
   count,
   results,
   total,
+  endsAt = null,
+  seconds = null,
 }: {
   index: number;
   count: number;
   results: RoundResult[];
   total: number;
+  /** Timed rounds: when the clock runs out (local time). */
+  endsAt?: number | null;
+  /** Timed games: seconds per round. */
+  seconds?: number | null;
 }) {
   const shown = useCountUp(total, { duration: 900, delay: 900, initial: total });
   return (
@@ -60,6 +67,7 @@ export default function Hud({
             );
           })}
         </div>
+        {seconds !== null && <RoundClock key={index} endsAt={endsAt} seconds={seconds} />}
       </div>
 
       <div className="flex items-baseline gap-2 rounded-full border border-maize/30 bg-night/75 px-4 py-1.5 shadow-lg backdrop-blur-md">
@@ -74,9 +82,38 @@ export default function Hud({
 export function RoundBanner({ n, last }: { n: number; last: boolean }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[22%] z-30 flex justify-center" aria-hidden>
-      <div className="sg-banner text-display rounded-2xl border-2 border-maize/50 bg-night/70 px-7 py-3 text-5xl text-maize-gradient shadow-2xl backdrop-blur-md sm:text-6xl">
-        {last ? "Final round" : `Round ${n}`}
+      <div className="sg-banner text-display rounded-2xl border-2 border-maize/50 bg-night/70 px-7 py-3 text-5xl shadow-2xl backdrop-blur-md sm:text-6xl">
+        <span className="text-maize-gradient">{last ? "Final round" : `Round ${n}`}</span>
       </div>
+    </div>
+  );
+}
+
+/** Seconds left in a timed round, with a draining bar; red for the last ten. */
+function RoundClock({ endsAt, seconds }: { endsAt: number | null; seconds: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (endsAt === null) return;
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, [endsAt]);
+  const msLeft = endsAt === null ? seconds * 1000 : Math.max(0, endsAt - now);
+  const left = Math.ceil(msLeft / 1000);
+  const low = endsAt !== null && left <= 10;
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-full border bg-night/80 px-3 py-1 shadow-lg backdrop-blur-md ${low ? "border-[#ff4d5e]/70 text-[#ff4d5e]" : "border-maize/30 text-maize"}`}
+      role="timer"
+      aria-label={`${left} seconds left`}
+    >
+      <Timer className="size-4" strokeWidth={2.6} />
+      <span className="text-display w-[2ch] text-xl tabular-nums">{left}</span>
+      <span className="h-1.5 w-20 overflow-hidden rounded-full bg-foreground/15">
+        <span
+          className={`block h-full rounded-full transition-[width] duration-200 ease-linear ${low ? "bg-[#ff4d5e]" : "bg-maize"}`}
+          style={{ width: `${(msLeft / (seconds * 1000)) * 100}%` }}
+        />
+      </span>
     </div>
   );
 }

@@ -5,11 +5,13 @@ import type { GeoJSONSource, Map as MLMap, Marker as MLMarker } from "maplibre-g
 import { useEffect, useRef, useState } from "react";
 import { BLUE, GOLD, MAIZE, MAP_STYLE } from "@/components/game/GuessMap";
 import { CAMPUS } from "@/lib/campus";
+import { getMapSetting } from "@/lib/map-settings";
 import { bounds, CAMPUS_FALLBACK_BOUNDS } from "@/lib/geo";
 import type { LngLat } from "@/lib/types";
 
 export interface SummaryRound {
-  guess: LngLat;
+  /** Null when the round ran out of time without a pin. */
+  guess: LngLat | null;
   answer: LngLat;
   bullseye: boolean;
 }
@@ -108,15 +110,18 @@ export default function SummaryMap({
       map.on("load", () => {
         if (cancelled) return;
         const firstSymbol = map.getStyle().layers?.find((l) => l.type === "symbol")?.id;
-        map.addSource("campus", { type: "geojson", data: CAMPUS as unknown as GeoJSON.FeatureCollection });
-        map.addLayer(
-          { id: "campus-fill", type: "fill", source: "campus", paint: { "fill-color": MAIZE, "fill-opacity": 0.08 } },
-          firstSymbol,
-        );
-        map.addLayer(
-          { id: "campus-line", type: "line", source: "campus", paint: { "line-color": GOLD, "line-width": 2, "line-opacity": 0.8 } },
-          firstSymbol,
-        );
+        // Campus outlines follow the player's choice from the start screen.
+        if (getMapSetting("outlines")) {
+          map.addSource("campus", { type: "geojson", data: CAMPUS as unknown as GeoJSON.FeatureCollection });
+          map.addLayer(
+            { id: "campus-fill", type: "fill", source: "campus", paint: { "fill-color": MAIZE, "fill-opacity": 0.08 } },
+            firstSymbol,
+          );
+          map.addLayer(
+            { id: "campus-line", type: "line", source: "campus", paint: { "line-color": GOLD, "line-width": 2, "line-opacity": 0.8 } },
+            firstSymbol,
+          );
+        }
         map.addSource("lines", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         map.addLayer({
           id: "lines-casing",
@@ -156,8 +161,12 @@ export default function SummaryMap({
     markers.current.forEach((m) => m.remove());
     markers.current = [];
     rounds.forEach((r, i) => {
+      if (r.guess) {
+        markers.current.push(
+          new Marker({ element: guessEl(i + 1), anchor: "bottom" }).setLngLat([r.guess.lng, r.guess.lat]).addTo(map),
+        );
+      }
       markers.current.push(
-        new Marker({ element: guessEl(i + 1), anchor: "bottom" }).setLngLat([r.guess.lng, r.guess.lat]).addTo(map),
         new Marker({ element: answerEl(i + 1, r.bullseye, () => onFocusRef.current(i)), anchor: "center" })
           .setLngLat([r.answer.lng, r.answer.lat])
           .addTo(map),
@@ -165,17 +174,23 @@ export default function SummaryMap({
     });
     (map.getSource("lines") as GeoJSONSource | undefined)?.setData({
       type: "FeatureCollection",
-      features: rounds.map((r) => ({
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [r.guess.lng, r.guess.lat],
-            [r.answer.lng, r.answer.lat],
-          ],
-        },
-      })),
+      features: rounds.flatMap((r) =>
+        r.guess
+          ? [
+              {
+                type: "Feature" as const,
+                properties: {},
+                geometry: {
+                  type: "LineString" as const,
+                  coordinates: [
+                    [r.guess.lng, r.guess.lat],
+                    [r.answer.lng, r.answer.lat],
+                  ],
+                },
+              },
+            ]
+          : [],
+      ),
     });
   }, [rounds, ready]);
 
@@ -186,7 +201,7 @@ export default function SummaryMap({
     const sel = focus === null ? rounds : rounds.slice(focus, focus + 1);
     fit(
       map,
-      sel.flatMap((r) => [r.guess, r.answer]),
+      sel.flatMap((r) => (r.guess ? [r.guess, r.answer] : [r.answer])),
       focus === null ? 56 : 90,
       900,
     );

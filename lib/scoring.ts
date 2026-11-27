@@ -22,8 +22,14 @@ export const isBullseye = (distanceM: number) => distanceM <= BULLSEYE_METERS;
 
 export const VERSUS_MAX_PLAYERS = 6; // host + 5 friends
 export const VERSUS_START_HP = 6000;
-/** Seconds each round lasts once it starts. */
+/** Seconds each round lasts once it starts, unless the host picks another of the options. */
 export const VERSUS_ROUND_SECONDS = 45;
+export const VERSUS_ROUND_OPTIONS = [15, 30, 45, 60, 90] as const;
+
+/** The host's pick if it is one of the options, else the default. */
+export function versusRoundSeconds(pick: unknown): number {
+  return VERSUS_ROUND_OPTIONS.includes(pick as (typeof VERSUS_ROUND_OPTIONS)[number]) ? (pick as number) : VERSUS_ROUND_SECONDS;
+}
 /** Once someone guesses, everyone else's clock drops to at most this many seconds. */
 export const VERSUS_RUSH_SECONDS = 15;
 

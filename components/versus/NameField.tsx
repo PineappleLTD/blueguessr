@@ -40,7 +40,7 @@ export default function NameField({
         enterKeyHint="go"
         autoFocus={autoFocus}
         aria-invalid={bad || undefined}
-        className={`h-14 w-full rounded-xl border-2 bg-mblue-deep/80 px-4 font-display text-2xl font-bold italic tracking-wide text-foreground outline-none transition placeholder:text-foreground/25 focus:border-maize focus:bg-mblue ${
+        className={`h-12 w-full rounded-xl border-2 bg-mblue-deep/80 px-4 font-display text-2xl font-bold italic tracking-wide text-foreground outline-none transition placeholder:text-foreground/25 focus:border-maize focus:bg-mblue ${
           bad ? "border-destructive/80" : "border-maize/25"
         }`}
         placeholder="Wolverine"

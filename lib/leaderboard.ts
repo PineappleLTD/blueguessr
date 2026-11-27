@@ -1,17 +1,20 @@
 import "server-only";
 import { ApiError, GAME_TTL_SECONDS, gameTotals, playerKey, submittedKey } from "./game";
+import { dailyDate } from "./daily";
 import { kv } from "./kv";
 import { claimName, cleanName } from "./names";
 
-// Ranked solo leaderboard: best game per player name, all time and per ISO week (Ann Arbor time).
+// The leaderboard is the Daily BlueGuessr's: each player's first daily of the day, played without
+// landmarks or map labels (lib/game.ts decides). One board per day, and the best daily ever.
+// (lb:all and lb:week:* hold scores from before, when any solo game counted; nothing reads them.)
 //
-//   lb:all, lb:week:<YYYY-Www>   sorted sets, member "n:<lowercased name>", score = best total
-//                               plus a tiny tie-breaker (see encodeScore), raised with ZADD GT
-//   <board>:stats               hash member -> { name, games, bullseyes, best }
+//   lbd:all, lbd:day:<YYYY-MM-DD>  sorted sets, member "n:<lowercased name>", score = best total
+//                                 plus a tiny tie-breaker (see encodeScore), raised with ZADD GT
+//   <board>:stats                 hash member -> { name, games, bullseyes, best }
 //
 // Members carry an "n:" prefix so a name like "1e3" never comes back from Redis as a number.
 
-export type Period = "all" | "week";
+export type Period = "today" | "all";
 
 export interface LeaderboardEntry {
   rank: number;
@@ -23,8 +26,8 @@ export interface LeaderboardEntry {
 
 export interface LeaderboardData {
   period: Period;
-  /** ISO week of the weekly board, e.g. "2026-W48". */
-  week: string;
+  /** Today's daily, e.g. "2026-11-26". */
+  day: string;
   entries: LeaderboardEntry[];
   /** Players on this board. */
   players: number;
@@ -42,9 +45,9 @@ export interface SubmitResult {
   best: number;
   rank: number;
   players: number;
-  weekBest: number;
-  weekRank: number;
-  weekPlayers: number;
+  /** Today's board. */
+  dayRank: number;
+  dayPlayers: number;
   /** The game had already been posted by this player; nothing changed. */
   already?: boolean;
 }
@@ -56,35 +59,13 @@ interface Stats {
   best: number;
 }
 
-const ALL_BOARD = "lb:all";
-const WEEK_TTL_SECONDS = 60 * 60 * 24 * 7 * 6;
+const ALL_BOARD = "lbd:all";
+const DAY_TTL_SECONDS = 60 * 60 * 24 * 45;
 export const LEADERBOARD_SIZE = 50;
 
-const weekBoard = (week: string) => `lb:week:${week}`;
+const dayBoard = (day: string) => `lbd:day:${day}`;
 const statsKey = (board: string) => `${board}:stats`;
 const memberOf = (name: string) => `n:${name.toLowerCase()}`;
-
-/** ISO 8601 week (Monday start) of a date, in Ann Arbor's time zone: "2026-W48". */
-export function isoWeek(date = new Date()): string {
-  let y: number, m: number, d: number;
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Detroit",
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-    }).formatToParts(date);
-    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-    [y, m, d] = [get("year"), get("month"), get("day")];
-  } catch {
-    [y, m, d] = [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()];
-  }
-  const t = new Date(Date.UTC(y, m - 1, d));
-  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); // Thursday decides the year
-  const yearStart = Date.UTC(t.getUTCFullYear(), 0, 1);
-  const week = Math.ceil(((t.getTime() - yearStart) / 86_400_000 + 1) / 7);
-  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
 
 // Equal totals rank by who got there first: the fraction shrinks over time and stays below 0.5,
 // so Math.floor gives the total back and ZADD GT keeps the earliest of equal scores.
@@ -109,10 +90,10 @@ async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return fn();
 }
 
-/** Adds one finished game to both boards. Returns whether it is a new all-time best. */
-async function record(name: string, total: number, bullseyes: number): Promise<boolean> {
+/** Adds one finished daily to its day's board and the all-time one. Returns whether it is a new best. */
+async function record(name: string, day: string, total: number, bullseyes: number): Promise<boolean> {
   const member = memberOf(name);
-  const boards = [ALL_BOARD, weekBoard(isoWeek())];
+  const boards = [ALL_BOARD, dayBoard(day)];
   const score = encodeScore(total, Date.now());
   let newBest = false;
   await withLock(`lb:lock:${member}`, async () => {
@@ -129,8 +110,8 @@ async function record(name: string, total: number, bullseyes: number): Promise<b
     }
   });
   await Promise.all(boards.map((b) => kv().zadd(b, score, member, { gt: true })));
-  const week = boards[1];
-  await Promise.all([kv().expire(week, WEEK_TTL_SECONDS), kv().expire(statsKey(week), WEEK_TTL_SECONDS)]);
+  const today = boards[1];
+  await Promise.all([kv().expire(today, DAY_TTL_SECONDS), kv().expire(statsKey(today), DAY_TTL_SECONDS)]);
   return newBest;
 }
 
@@ -149,11 +130,11 @@ async function standing(board: string, member: string) {
 
 async function result(
   name: string,
-  game: { total: number; bullseyes: number },
+  game: { total: number; bullseyes: number; day?: string },
   extra: { newBest: boolean; already?: boolean },
 ): Promise<SubmitResult> {
   const member = memberOf(name);
-  const [all, week] = await Promise.all([standing(ALL_BOARD, member), standing(weekBoard(isoWeek()), member)]);
+  const [all, today] = await Promise.all([standing(ALL_BOARD, member), standing(dayBoard(game.day ?? dailyDate()), member)]);
   return {
     name,
     total: game.total,
@@ -161,9 +142,8 @@ async function result(
     best: all.best,
     rank: all.rank,
     players: all.players,
-    weekBest: week.best,
-    weekRank: week.rank,
-    weekPlayers: week.players,
+    dayRank: today.rank,
+    dayPlayers: today.players,
     ...extra,
   };
 }
@@ -175,6 +155,7 @@ async function result(
 export async function submitScore(gameId: string, playerId: string, rawName: unknown): Promise<SubmitResult> {
   const game = await gameTotals(gameId);
   if (!game.complete) throw new ApiError("not-finished", 409);
+  if (!game.ranked || !game.day) throw new ApiError("unranked", 403);
   const me = playerKey(playerId);
   if (game.owner && game.owner !== me) throw new ApiError("not-yours", 403);
 
@@ -199,7 +180,7 @@ export async function submitScore(gameId: string, playerId: string, rawName: unk
   }
   let newBest: boolean;
   try {
-    newBest = await record(name, game.total, game.bullseyes);
+    newBest = await record(name, game.day, game.total, game.bullseyes);
   } catch (e) {
     await kv().del(lock); // let them try again
     throw e;
@@ -218,8 +199,8 @@ function toEntry(rank: number, member: string, score: number, stats: Stats | nul
 }
 
 export async function getLeaderboard(period: Period, meName?: string | null): Promise<LeaderboardData> {
-  const week = isoWeek();
-  const board = period === "week" ? weekBoard(week) : ALL_BOARD;
+  const day = dailyDate();
+  const board = period === "today" ? dayBoard(day) : ALL_BOARD;
   const [top, players] = await Promise.all([kv().zrevrange(board, 0, LEADERBOARD_SIZE - 1), kv().zcard(board)]);
   const stats = await Promise.all(top.map((t) => kv().hget<Stats>(statsKey(board), t.member)));
   const entries = top.map((t, i) => toEntry(i + 1, t.member, t.score, stats[i]));
@@ -239,5 +220,5 @@ export async function getLeaderboard(period: Period, meName?: string | null): Pr
       if (rank !== null && score !== null) me = toEntry(rank + 1, member, Number(score), s);
     }
   }
-  return { period, week, entries, players, me };
+  return { period, day, entries, players, me };
 }

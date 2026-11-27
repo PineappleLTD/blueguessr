@@ -3,12 +3,13 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Guess-map options a player can switch off, saved on this device and shared by every map (solo
- * and versus). Both default to on.
+ * Guess-map options a player picks before a game, saved on this device and shared by every map
+ * (solo and versus). All default to on.
  * - landmarks: the labeled campus landmarks (lib/landmarks.ts)
  * - labels: the base map's own text: street names, bus stops, building and place names
+ * - outlines: the shaded campus areas and their outlines
  */
-export type MapSetting = "landmarks" | "labels";
+export type MapSetting = "landmarks" | "labels" | "outlines";
 
 const keyOf = (s: MapSetting) => `blueguessr:map-${s}`;
 const EVENT = "blueguessr:map-settings";
@@ -28,7 +29,8 @@ function subscribe(onChange: () => void) {
 // Used when localStorage is unavailable (some private modes): choices last until reload.
 const fallback = new Map<MapSetting, boolean>();
 
-function read(s: MapSetting): boolean {
+/** The current choice, outside React (e.g. when starting a game). */
+export function getMapSetting(s: MapSetting): boolean {
   const f = fallback.get(s);
   if (f !== undefined) return f;
   try {
@@ -50,7 +52,7 @@ export function setMapSetting(s: MapSetting, on: boolean) {
 export function useMapSetting(s: MapSetting): boolean {
   return useSyncExternalStore(
     subscribe,
-    () => read(s),
+    () => getMapSetting(s),
     () => true,
   );
 }

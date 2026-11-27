@@ -4,7 +4,6 @@ import { Loader2, LogIn } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Dunes from "./Dunes";
 import Finish from "./Finish";
 import GameStage from "./GameStage";
 import { saveName, useLocalPlayer, useRoom } from "./hooks";
@@ -12,7 +11,7 @@ import Lobby from "./Lobby";
 import NameField, { nameOk } from "./NameField";
 import { isRoomCode, type RoomError } from "./types";
 import VersusStyles from "./VersusStyles";
-import Footer from "@/components/site/Footer";
+import Screen from "@/components/site/Screen";
 
 export function RoomLoading() {
   return (
@@ -129,14 +128,9 @@ export default function VersusRoom({ code, header }: { code: string; header: Rea
 
 function Shell({ header, children }: { header: React.ReactNode; children: React.ReactNode }) {
   return (
-    <>
-      {header}
+    <Screen header={header} className="items-center justify-center px-4 pb-[8svh] text-center">
       <VersusStyles />
-      <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-4 pt-4 pb-44 text-center">
-        {children}
-        <Dunes className="absolute inset-x-0 bottom-0" />
-      </main>
-      <Footer waves={false} solid={false} className="relative z-10" />
-    </>
+      {children}
+    </Screen>
   );
 }
