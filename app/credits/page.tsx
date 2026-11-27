@@ -162,7 +162,6 @@ export default function CreditsPage() {
           </List>
         </Section>
 
-        <p className="mt-12 text-sm text-foreground/50">Not affiliated with the University of Michigan.</p>
       </main>
       <Footer />
     </div>

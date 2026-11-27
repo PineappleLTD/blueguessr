@@ -34,6 +34,9 @@ export default function Footer({
             <PineappleGlyph className="h-8 w-auto transition-transform duration-300 group-hover:-rotate-12 group-hover:scale-110" />
             <span>a pineapple project</span>
           </a>
+          <p className="order-last text-center text-xs text-foreground/45 sm:order-none">
+            Not affiliated with the University of Michigan.
+          </p>
           <nav aria-label="Footer" className="flex items-center gap-1">
             <Link href={CREDITS_HREF} className="site-footer-link">
               Credits

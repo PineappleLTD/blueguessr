@@ -538,17 +538,6 @@
   box-shadow: 0 8px 0 var(--gold-deep), 0 14px 36px oklch(0.87 0.18 93 / 0.35);
   &:hover { box-shadow: 0 9px 0 var(--gold-deep), 0 18px 44px oklch(0.87 0.18 93 / 0.45); }
   &:active { transform: translateY(7px); box-shadow: 0 1px 0 var(--gold-deep), 0 6px 14px oklch(0.87 0.18 93 / 0.25); }
-  /* A ring that breathes out of PLAY now and then. */
-  &::after {
-    content: "";
-    position: absolute;
-    inset: -5px;
-    border-radius: inherit;
-    border: 3px solid var(--maize);
-    opacity: 0;
-    pointer-events: none;
-    animation: lp-ring 2800ms ease-out infinite 2400ms;
-  }
 }
 .lp-versus {
   gap: 0.5rem;
@@ -677,10 +666,6 @@
 @keyframes lp-rise {
   from { opacity: 0; transform: translateY(22px) scale(0.94); }
 }
-@keyframes lp-ring {
-  0% { opacity: 0.75; transform: scale(1); }
-  70%, 100% { opacity: 0; transform: scale(1.14, 1.4); }
-}
 @keyframes nf-march {
   to { stroke-dashoffset: -32; }
 }
@@ -704,7 +689,6 @@
   .lp-wm-letter,
   .lp-ctas,
   .lp-minor,
-  .lp-play::after,
   .nf-trail,
   .nf-pin {
     animation: none !important;
