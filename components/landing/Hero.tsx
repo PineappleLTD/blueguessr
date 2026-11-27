@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Camera, Play, Swords, Trophy } from "lucide-react";
+import { Play, Swords, Trophy } from "lucide-react";
 import type { RotatingEarthHandle } from "@/components/ui/wireframe-dotted-globe";
 import ParticleDunes from "./ParticleDunes";
 import Wordmark from "./Wordmark";
@@ -92,10 +92,6 @@ export default function Hero({ header, footer }: { header?: ReactNode; footer?: 
             <Link href="/leaderboard" className="lp-minor-btn">
               <Trophy className="size-[1.1em]" strokeWidth={2.5} aria-hidden />
               Leaderboard
-            </Link>
-            <Link href="/contribute" className="lp-minor-btn">
-              <Camera className="size-[1.1em]" strokeWidth={2.5} aria-hidden />
-              Contribute
             </Link>
           </div>
         </div>

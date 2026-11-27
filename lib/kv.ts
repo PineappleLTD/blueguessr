@@ -2,7 +2,7 @@ import "server-only";
 import { Redis } from "@upstash/redis";
 
 /**
- * The small key-value surface the game needs (rooms, games, leaderboard, contributions).
+ * The small key-value surface the game needs (rooms, games, leaderboard, accounts).
  *
  * Production uses Upstash Redis from the Vercel Marketplace (KV_REST_API_URL / KV_REST_API_TOKEN,
  * or UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN). Local development without those

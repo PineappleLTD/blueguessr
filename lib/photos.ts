@@ -1,30 +1,21 @@
 import "server-only";
 import photosJson from "@/data/photos.json";
 import { distanceMeters } from "./geo";
-import { kv } from "./kv";
 import type { Photo, RoundPhoto, RoundReveal } from "./types";
 
 /** Photos pulled from Mapillary and Wikimedia Commons by scripts/ (see data/photos.json). */
 const STATIC_PHOTOS = photosJson as Photo[];
 
-/** KV hash of approved player photos: id -> Photo. Written by the contribution review flow. */
-export const APPROVED_PLAYER_PHOTOS_KEY = "photos:player";
-
 export function staticPhotos(): Photo[] {
   return STATIC_PHOTOS;
 }
 
-export async function playerPhotos(): Promise<Photo[]> {
-  const all = await kv().hgetall<Photo>(APPROVED_PLAYER_PHOTOS_KEY);
-  return Object.values(all);
-}
-
 export async function allPhotos(): Promise<Photo[]> {
-  return [...STATIC_PHOTOS, ...(await playerPhotos())];
+  return STATIC_PHOTOS;
 }
 
 export async function photoById(id: string): Promise<Photo | null> {
-  return STATIC_PHOTOS.find((p) => p.id === id) ?? (await kv().hget<Photo>(APPROVED_PLAYER_PHOTOS_KEY, id));
+  return STATIC_PHOTOS.find((p) => p.id === id) ?? null;
 }
 
 /**

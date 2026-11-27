@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
-import { io } from "next/cache";
-import Link from "next/link";
-import { Suspense, type ReactNode } from "react";
-import { PHOTO_LICENSE, PHOTO_LICENSE_URL } from "@/components/contribute/shared";
+import type { ReactNode } from "react";
 import Footer from "@/components/site/Footer";
 import Header from "@/components/site/Header";
-import { playerPhotos, staticPhotos } from "@/lib/photos";
+import { staticPhotos } from "@/lib/photos";
 import type { Photo } from "@/lib/types";
 
 export const metadata: Metadata = {
@@ -44,7 +41,7 @@ export default function CreditsPage() {
   const photos = staticPhotos();
   const mapillary = creditRows(photos.filter((p) => p.source === "mapillary"));
   const commons = creditRows(photos.filter((p) => p.source === "commons"));
-  const licenses = licenseList([...photos, { license: PHOTO_LICENSE, licenseUrl: PHOTO_LICENSE_URL }]);
+  const licenses = licenseList(photos);
 
   return (
     <div className="relative flex min-h-dvh flex-col">
@@ -59,9 +56,6 @@ export default function CreditsPage() {
           <Sub title="Wikimedia Commons" href="https://commons.wikimedia.org/">
             <CreditList rows={commons} />
           </Sub>
-          <Suspense fallback={<Sub title="Players">…</Sub>}>
-            <PlayerCredits />
-          </Suspense>
         </Section>
 
         <Section title="Licenses">
@@ -147,49 +141,9 @@ export default function CreditsPage() {
             </li>
           </List>
         </Section>
-
-        <Section title="Software">
-          <List>
-            <li>
-              <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector" {...ext} className={link}>
-                MediaPipe
-              </a>{" "}
-              and its BlazeFace model, under the{" "}
-              <a href="https://www.apache.org/licenses/LICENSE-2.0" {...ext} className={link}>
-                Apache License 2.0
-              </a>
-            </li>
-          </List>
-        </Section>
-
       </main>
       <Footer />
     </div>
-  );
-}
-
-/** Player photos live in KV, so this part streams in at request time. */
-async function PlayerCredits() {
-  await io();
-  let rows: CreditRow[] = [];
-  try {
-    rows = creditRows(await playerPhotos());
-  } catch (e) {
-    console.error("[blueguessr] player credits unavailable:", e);
-  }
-  return (
-    <Sub title="Players">
-      {rows.length ? (
-        <CreditList rows={rows} />
-      ) : (
-        <p className="text-sm text-foreground/60">
-          None yet.{" "}
-          <Link href="/contribute" className={link}>
-            Add yours
-          </Link>
-        </p>
-      )}
-    </Sub>
   );
 }
 

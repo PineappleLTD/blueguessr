@@ -28,11 +28,7 @@ export default function ErrorScreen({ kind, onRetry }: { kind: ErrorKind; onRetr
         </div>
         <h1 className="text-display animate-pop text-6xl text-maize-gradient sm:text-7xl">{title}</h1>
         <div className="flex flex-wrap justify-center gap-3">
-          {kind === "no-photos" ? (
-            <Link href="/contribute" className="btn-game">
-              Contribute
-            </Link>
-          ) : (
+          {kind !== "no-photos" && (
             <button type="button" className="btn-game" onClick={onRetry}>
               <RotateCcw className="size-5" strokeWidth={2.6} />
               {retry}

@@ -1,4 +1,4 @@
-import { Camera, Play, Swords, Trophy, type LucideIcon } from "lucide-react";
+import { Play, Swords, Trophy, type LucideIcon } from "lucide-react";
 
 export interface NavLink {
   href: string;
@@ -11,7 +11,6 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/play", label: "Play", icon: Play },
   { href: "/versus", label: "Versus", icon: Swords },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
-  { href: "/contribute", label: "Contribute", icon: Camera },
 ];
 
 export const CREDITS_HREF = "/credits";
