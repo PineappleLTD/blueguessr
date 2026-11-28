@@ -93,6 +93,8 @@ export interface MeView {
 
 export interface RoomView {
   code: string;
+  /** Random room id. Polls send it back (with game and round) so the server reads the room in one round trip. */
+  rid: string;
   /** Room version: goes up by one on every phase change. */
   v: number;
   serverNow: number;

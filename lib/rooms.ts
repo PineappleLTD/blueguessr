@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash, randomBytes, randomInt } from "node:crypto";
+import { after } from "next/server";
 import {
   isRoomCode,
   PLAYER_HEADER,
@@ -223,6 +224,34 @@ export function playerSecret(request: Request): string | null {
   return s && SECRET_PATTERN.test(s) ? s : null;
 }
 
+/**
+ * What the browser last saw of the room, sent back as ?h=<room id> or ?h=<room id>.<game>.<round>
+ * (during a round). With it a poll reads the room and its hashes in one round trip instead of two.
+ * Only a hint: it is checked against the room and ignored when stale.
+ */
+export interface RoomHint {
+  rid: string;
+  game: number | null;
+  round: number | null;
+}
+
+const HINT_PATTERN = /^([A-Za-z0-9_-]{12})(?:\.(\d{1,4})\.(\d{1,3}))?$/;
+
+export function roomHint(request: Request): RoomHint | null {
+  const m = HINT_PATTERN.exec(new URL(request.url).searchParams.get("h") ?? "");
+  return m ? { rid: m[1], game: m[2] ? Number(m[2]) : null, round: m[3] ? Number(m[3]) : null } : null;
+}
+
+/** Runs a write after the response has gone out (on Vercel the function stays up for it). */
+function inBackground(write: Promise<unknown>): void {
+  const done = write.catch((e) => console.error("[blueguessr] background write failed", e));
+  try {
+    after(done);
+  } catch {
+    // Not inside a request (scripts): the write simply finishes on its own.
+  }
+}
+
 export async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
     const body = await request.json();
@@ -250,9 +279,27 @@ function randomCode(): string {
 
 // ---------------------------------------------------------------- loading
 
-async function loadCtx(code: string): Promise<Ctx | null> {
-  const room = await kv().get<RoomState>(K.room(code));
-  return room ? loadAround(room) : null;
+async function loadCtx(code: string, hint: RoomHint | null = null): Promise<Ctx | null> {
+  if (!hint) {
+    const room = await kv().get<RoomState>(K.room(code));
+    return room ? loadAround(room) : null;
+  }
+  // The browser named the room id (and round) it last saw, so the hashes can be read alongside the room.
+  const db = kv();
+  const { rid, game, round } = hint;
+  const [room, members, seen, guesses] = await Promise.all([
+    db.get<RoomState>(K.room(code)),
+    db.hgetall<Member>(K.members(rid)),
+    db.hgetall<number>(K.seen(rid)),
+    game !== null && round !== null ? db.hgetall<GuessRec>(K.guesses(rid, game, round)) : Promise.resolve({}),
+  ]);
+  if (!room) return null;
+  // The code now belongs to a different room: the hint is stale.
+  if (room.id !== rid) return loadAround(room);
+  if (room.phase !== "round") return { room, members, seen, guesses: {} };
+  if (room.game === game && room.round === round) return { room, members, seen, guesses };
+  // A round started since the browser last looked: its guesses still need reading.
+  return { room, members, seen, guesses: await db.hgetall<GuessRec>(K.guesses(room.id, room.game, room.round)) };
 }
 
 /** Everything around a room JSON we already have. */
@@ -398,31 +445,48 @@ function roundStart(round: number, photo: Photo, now: number, seconds: number) {
 
 // ---------------------------------------------------------------- transitions
 
-type Build = (fresh: RoomState) => Promise<RoomState | RoomError | null>;
+/** `around` holds the room's hashes, read after taking the lock. */
+type Build = (fresh: RoomState, around: Ctx) => Promise<RoomState | RoomError | null>;
 
 interface Transitioned {
   room: RoomState;
   changed: boolean;
   error?: RoomError;
+  /** Set when this request made the change: the new room with its hashes, so nothing needs reloading. */
+  ctx?: Ctx;
 }
 
-/** Performs the single transition out of `from.v`, if this request wins the lock (see top). */
-async function transition(from: RoomState, build: Build): Promise<Transitioned> {
+/** Performs the single transition out of `ctx.room.v`, if this request wins the lock (see top). */
+async function transition(ctx: Ctx, build: Build): Promise<Transitioned> {
   const db = kv();
+  const from = ctx.room;
   const lock = K.lock(from.id, from.v);
-  if (!(await db.set(lock, Date.now(), { nx: true, ex: LOCK_TTL_S }))) {
+  // One round trip, run in order: take the lock, then re-read the room and the hashes the builders
+  // use. The reads come after the lock, so they see everything written before it.
+  const [locked, fresh, members, seenNow, guesses] = await Promise.all([
+    db.set(lock, Date.now(), { nx: true, ex: LOCK_TTL_S }),
+    db.get<RoomState>(K.room(from.code)),
+    db.hgetall<Member>(K.members(from.id)),
+    db.hgetall<number>(K.seen(from.id)),
+    from.phase === "round" ? db.hgetall<GuessRec>(K.guesses(from.id, from.game, from.round)) : Promise.resolve({}),
+  ]);
+  if (!locked) {
     // Someone else is on it. Give them a moment so this response can already show the result.
     await new Promise((r) => setTimeout(r, 120));
     const now = await db.get<RoomState>(K.room(from.code));
     return now && now.id === from.id ? { room: now, changed: now.v !== from.v, error: "busy" } : { room: from, changed: false, error: "busy" };
   }
-  const fresh = await db.get<RoomState>(K.room(from.code));
   if (!fresh || fresh.id !== from.id) return { room: from, changed: false, error: "not_found" };
   if (fresh.v !== from.v) return { room: fresh, changed: true };
+  // Still at version v, so still the same game and round: the hashes above belong to it. Presence
+  // this request recorded may still be on its way to the store (it is written in the background).
+  const seen = { ...seenNow };
+  for (const [pid, at] of Object.entries(ctx.seen)) if (at > (seen[pid] ?? 0)) seen[pid] = at;
+  const around: Ctx = { room: fresh, members, seen, guesses };
 
   let next: RoomState | RoomError | null;
   try {
-    next = await build(fresh);
+    next = await build(fresh, around);
   } catch (e) {
     await db.del(lock);
     throw e;
@@ -432,15 +496,15 @@ async function transition(from: RoomState, build: Build): Promise<Transitioned> 
     return { room: fresh, changed: false, error: next ?? undefined };
   }
   const saved: RoomState = { ...next, v: fresh.v + 1, updatedAt: Date.now() };
-  await db.set(K.room(saved.code), saved, { ex: ROOM_TTL_S });
-  await touch(saved);
-  return { room: saved, changed: true };
+  // One round trip: save the new state and push back every key's expiry.
+  await Promise.all([db.set(K.room(saved.code), saved, { ex: ROOM_TTL_S }), touch(saved)]);
+  // Transitions don't change members or presence, and a round that just began has no guesses yet.
+  return { room: saved, changed: true, ctx: { room: saved, members, seen, guesses: {} } };
 }
 
 /** Scores the current round: round -> reveal. */
-async function resolveRound(fresh: RoomState): Promise<RoomState | null> {
+async function resolveRound(fresh: RoomState, ctx: Ctx): Promise<RoomState | null> {
   if (fresh.phase !== "round" || !fresh.photo) return null;
-  const ctx = await loadAround(fresh);
   const now = Date.now();
   if (dueTransition(ctx, now) !== "resolve") return null;
 
@@ -570,12 +634,12 @@ async function advanceReveal(fresh: RoomState, skip: boolean): Promise<RoomState
 /** A fresh game from the current members: lobby -> round 1 (start), finished -> round 1 (rematch). */
 async function newGame(
   fresh: RoomState,
+  ctx: Ctx,
   from: RoomPhase,
   byKey: string,
   seconds: number | null,
 ): Promise<RoomState | RoomError> {
   if (fresh.phase !== from) return "wrong_phase";
-  const ctx = await loadAround(fresh);
   const now = Date.now();
   const me = ctx.members[byKey];
   if (!me) return "not_member";
@@ -610,9 +674,9 @@ async function advance(ctx: Ctx): Promise<Ctx> {
   for (let i = 0; i < 3; i++) {
     const due = dueTransition(ctx, Date.now());
     if (!due) break;
-    const t = await transition(ctx.room, (fresh) => (due === "resolve" ? resolveRound(fresh) : advanceReveal(fresh, false)));
+    const t = await transition(ctx, (fresh, around) => (due === "resolve" ? resolveRound(fresh, around) : advanceReveal(fresh, false)));
     if (!t.changed) break;
-    ctx = await loadAround(t.room);
+    ctx = t.ctx ?? (await loadAround(t.room));
   }
   return ctx;
 }
@@ -691,6 +755,7 @@ function buildView(ctx: Ctx, viewerKey: string | null, now: number): RoomView {
 
   const view: RoomView = {
     code: room.code,
+    rid: room.id,
     v: room.v,
     serverNow: now,
     phase: room.phase,
@@ -795,16 +860,21 @@ const ok = (ctx: Ctx, key: string | null, extra?: Partial<RoomResponse>): RoomRe
 });
 
 /** Loads the room, records the viewer's presence and runs anything that is due. */
-async function open(code: string, secret: string | null): Promise<{ ctx: Ctx; key: string | null; me: Member | null } | RoomResult> {
+async function open(
+  code: string,
+  secret: string | null,
+  hint: RoomHint | null = null,
+): Promise<{ ctx: Ctx; key: string | null; me: Member | null } | RoomResult> {
   if (!isRoomCode(code)) return fail("bad_code");
-  const loaded = await loadCtx(code);
+  const loaded = await loadCtx(code, hint);
   if (!loaded) return fail("not_found");
   let ctx = loaded;
   const key = secret ? memberKey(secret) : null;
   const me = key ? (ctx.members[key] ?? null) : null;
   const now = Date.now();
   if (me && now - (ctx.seen[me.pid] ?? 0) > SEEN_WRITE_MS) {
-    await kv().hset(K.seen(ctx.room.id), me.pid, now);
+    // Presence only needs to be roughly current, so its write doesn't hold up the response.
+    inBackground(kv().hset(K.seen(ctx.room.id), me.pid, now));
     ctx = { ...ctx, seen: { ...ctx.seen, [me.pid]: now } };
   }
   ctx = await advance(ctx);
@@ -846,8 +916,8 @@ export async function createRoom(secret: string | null, rawName: unknown): Promi
   return fail("busy");
 }
 
-export async function getRoom(code: string, secret: string | null): Promise<RoomResult> {
-  const o = await open(code, secret);
+export async function getRoom(code: string, secret: string | null, hint: RoomHint | null = null): Promise<RoomResult> {
+  const o = await open(code, secret, hint);
   if ("status" in o) return o;
   return ok(o.ctx, o.key);
 }
@@ -866,8 +936,7 @@ export async function joinRoom(code: string, secret: string | null, rawName: unk
   let me = o.me;
   if (!me) {
     if (Object.keys(ctx.members).length >= MAX_MEMBERS) return fail("room_full", buildView(ctx, k, Date.now()));
-    const seq = await db.incr(K.seq(id));
-    const unique = await claimRoomName(id, name, k);
+    const [seq, unique] = await Promise.all([db.incr(K.seq(id)), claimRoomName(id, name, k)]);
     const candidate: Member = { pid: `p${seq}`, seq, name: unique, joinedAt: Date.now() };
     if (await db.hsetnx(K.members(id), k, candidate)) {
       me = candidate;
@@ -878,8 +947,7 @@ export async function joinRoom(code: string, secret: string | null, rawName: unk
       if (me.name.toLowerCase() !== unique.toLowerCase()) await releaseName(id, unique, k);
     }
     const now = Date.now();
-    await db.hset(K.seen(id), me.pid, now);
-    await touch(ctx.room);
+    await Promise.all([db.hset(K.seen(id), me.pid, now), touch(ctx.room)]);
     ctx = { ...ctx, members: { ...ctx.members, [k]: me }, seen: { ...ctx.seen, [me.pid]: now } };
   }
   return ok(ctx, k);
@@ -920,8 +988,8 @@ export async function startGame(
     // Already started (double click, or someone else's click won): just show where things are.
     return ctx.room.phase === "lobby" || ctx.room.phase === "finished" ? fail("wrong_phase", buildView(ctx, key, Date.now())) : ok(ctx, key);
   }
-  const t = await transition(ctx.room, (fresh) => newGame(fresh, from, key!, seconds));
-  if (t.changed) ctx = await loadAround(t.room);
+  const t = await transition(ctx, (fresh, around) => newGame(fresh, around, from, key!, seconds));
+  if (t.changed) ctx = t.ctx ?? (await loadAround(t.room));
   if (t.error && t.error !== "busy") return fail(t.error, buildView(ctx, key, Date.now()));
   return ok(ctx, key);
 }
@@ -938,15 +1006,20 @@ export async function skipReveal(code: string, secret: string | null): Promise<R
   if (hostOf(ctx, now)?.pid !== o.me.pid) return fail("not_host", buildView(ctx, key, now));
   const last = ctx.room.results.at(-1);
   if (last && now - last.at < MIN_REVEAL_MS) return fail("too_early", buildView(ctx, key, now));
-  const t = await transition(ctx.room, (fresh) => advanceReveal(fresh, true));
-  if (t.changed) ctx = await loadAround(t.room);
+  const t = await transition(ctx, (fresh) => advanceReveal(fresh, true));
+  if (t.changed) ctx = t.ctx ?? (await loadAround(t.room));
   return ok(ctx, key);
 }
 
 /** Rough box around Ann Arbor: anything outside it can't be a real pin on the campus map. */
 const inAnnArbor = (lat: number, lng: number) => lat > 42.15 && lat < 42.4 && lng > -83.9 && lng < -83.55;
 
-export async function submitGuess(code: string, secret: string | null, body: Record<string, unknown>): Promise<RoomResult> {
+export async function submitGuess(
+  code: string,
+  secret: string | null,
+  body: Record<string, unknown>,
+  hint: RoomHint | null = null,
+): Promise<RoomResult> {
   if (!secret) return fail("no_player");
   const { round, lat, lng, game } = body;
   if (
@@ -961,7 +1034,7 @@ export async function submitGuess(code: string, secret: string | null, body: Rec
   ) {
     return fail("bad_request");
   }
-  const o = await open(code, secret); // closes the round first if its time is up
+  const o = await open(code, secret, hint); // closes the round first if its time is up
   if ("status" in o) return o;
   const { key } = o;
   let { ctx } = o;
@@ -980,10 +1053,14 @@ export async function submitGuess(code: string, secret: string | null, body: Rec
 
   const db = kv();
   const gk = K.guesses(room.id, room.game, room.round);
-  const written = await db.hsetnx(gk, me.pid, { lat, lng, at: now } satisfies GuessRec);
-  if (written) await db.expire(gk, ROOM_TTL_S);
-  // Re-read so that of two players guessing at once, at least one sees both guesses and ends the round.
-  ctx = { ...ctx, guesses: await db.hgetall<GuessRec>(gk) };
+  // One round trip, run in order: write the guess (first write wins), keep it, and re-read the round's
+  // guesses so that of two players guessing at once, at least one sees both guesses and ends the round.
+  const [written, , guesses] = await Promise.all([
+    db.hsetnx(gk, me.pid, { lat, lng, at: now } satisfies GuessRec),
+    db.expire(gk, ROOM_TTL_S),
+    db.hgetall<GuessRec>(gk),
+  ]);
+  ctx = { ...ctx, guesses };
   ctx = await advance(ctx);
   return written ? ok(ctx, key) : fail("already_guessed", view());
 }

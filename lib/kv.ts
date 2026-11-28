@@ -23,6 +23,8 @@ export interface KV {
   /** Returns false when the field already existed. */
   hsetnx(key: string, field: string, value: unknown): Promise<boolean>;
   hget<T>(key: string, field: string): Promise<T | null>;
+  /** Several fields of one hash in a single command, in the order asked (null where missing). */
+  hmget<T>(key: string, fields: string[]): Promise<(T | null)[]>;
   hgetall<T>(key: string): Promise<Record<string, T>>;
   hdel(key: string, field: string): Promise<void>;
 
@@ -63,6 +65,12 @@ function redisKV(redis: Redis): KV {
       return (await redis.hsetnx(k, f, v)) === 1;
     },
     hget: (k, f) => redis.hget(k, f),
+    async hmget<T>(k: string, fields: string[]) {
+      if (!fields.length) return [];
+      // Upstash hands HMGET back as { field: value }, or null when every field is missing.
+      const got = await redis.hmget<Record<string, T>>(k, ...fields);
+      return fields.map((f) => (got?.[f] ?? null) as T | null);
+    },
     async hgetall<T>(k: string) {
       return ((await redis.hgetall<Record<string, T>>(k)) ?? {}) as Record<string, T>;
     },
@@ -161,6 +169,10 @@ function memoryKV(): KV {
     },
     async hget(k, f) {
       return clone((hash(k)[f] ?? null) as never);
+    },
+    async hmget(k, fields) {
+      const h = hash(k);
+      return fields.map((f) => clone((h[f] ?? null) as never));
     },
     async hgetall(k) {
       return clone(hash(k)) as never;

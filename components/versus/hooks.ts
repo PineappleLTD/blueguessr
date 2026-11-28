@@ -80,9 +80,16 @@ export interface ApiResult {
   receivedAt: number;
 }
 
-export async function roomApi(path: string, body?: unknown): Promise<ApiResult> {
+/** What we last saw of the room, for ?h=: lets the server read the room in one round trip. */
+function hintFor(view: RoomView | null): string {
+  if (!view?.rid) return "";
+  const h = view.phase === "round" ? `${view.rid}.${view.game}.${view.round}` : view.rid;
+  return `?h=${encodeURIComponent(h)}`;
+}
+
+export async function roomApi(path: string, body?: unknown, seen: RoomView | null = null): Promise<ApiResult> {
   const sentAt = Date.now();
-  const res = await fetch(`/api/rooms${path}`, {
+  const res = await fetch(`/api/rooms${path}${hintFor(seen)}`, {
     method: body === undefined ? "GET" : "POST",
     headers: {
       [PLAYER_HEADER]: getPlayer().id,
@@ -155,7 +162,7 @@ export function useRoom(code: string, enabled: boolean): RoomSync {
       inFlight = true;
       clearTimeout(timer);
       try {
-        const r = await roomApi(`/${code}`);
+        const r = await roomApi(`/${code}`, undefined, latest.current);
         if (stopped) return;
         failures = 0;
         apply(r);
@@ -186,7 +193,7 @@ export function useRoom(code: string, enabled: boolean): RoomSync {
   const act = useCallback(
     async (action: string, body: Record<string, unknown> = {}) => {
       try {
-        const r = await roomApi(`/${code}/${action}`, body);
+        const r = await roomApi(`/${code}/${action}`, body, latest.current);
         apply(r);
         return { ok: r.status < 400, error: r.data.error };
       } catch {

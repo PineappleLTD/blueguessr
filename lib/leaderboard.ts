@@ -201,24 +201,26 @@ function toEntry(rank: number, member: string, score: number, stats: Stats | nul
 export async function getLeaderboard(period: Period, meName?: string | null): Promise<LeaderboardData> {
   const day = dailyDate();
   const board = period === "today" ? dayBoard(day) : ALL_BOARD;
-  const [top, players] = await Promise.all([kv().zrevrange(board, 0, LEADERBOARD_SIZE - 1), kv().zcard(board)]);
-  const stats = await Promise.all(top.map((t) => kv().hget<Stats>(statsKey(board), t.member)));
+  const name = meName ? cleanName(meName) : null;
+  const member = name ? memberOf(name) : null;
+  // Round trip 1: the top of the board, its size and (if asked) the asker's own rank and score.
+  const [top, players, mine] = await Promise.all([
+    kv().zrevrange(board, 0, LEADERBOARD_SIZE - 1),
+    kv().zcard(board),
+    member ? Promise.all([kv().zrevrank(board, member), kv().zscore(board, member)]) : null,
+  ]);
+  // Round trip 2: every row's stats (and the asker's) in one HMGET, not one HGET per row.
+  const fields = top.map((t) => t.member);
+  if (member) fields.push(member);
+  const stats = await kv().hmget<Stats>(statsKey(board), fields);
   const entries = top.map((t, i) => toEntry(i + 1, t.member, t.score, stats[i]));
 
   let me: LeaderboardEntry | null = null;
-  const name = meName ? cleanName(meName) : null;
-  if (name) {
-    const member = memberOf(name);
+  if (member && mine) {
     const i = top.findIndex((t) => t.member === member);
+    const [rank, score] = mine;
     if (i >= 0) me = entries[i];
-    else {
-      const [rank, score, s] = await Promise.all([
-        kv().zrevrank(board, member),
-        kv().zscore(board, member),
-        kv().hget<Stats>(statsKey(board), member),
-      ]);
-      if (rank !== null && score !== null) me = toEntry(rank + 1, member, Number(score), s);
-    }
+    else if (rank !== null && score !== null) me = toEntry(rank + 1, member, Number(score), stats[top.length]);
   }
   return { period, day, entries, players, me };
 }

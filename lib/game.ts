@@ -188,6 +188,12 @@ async function loadGuesses(id: string): Promise<StoredGuess[]> {
   return out;
 }
 
+/** The game and its guesses, read together in one round trip. */
+async function loadGameAndGuesses(id: string): Promise<[StoredGame, StoredGuess[]]> {
+  if (!GAME_ID_PATTERN.test(id)) throw new ApiError("not-found", 404);
+  return Promise.all([loadGame(id), loadGuesses(id)]);
+}
+
 function resultFor(game: StoredGame, guesses: StoredGuess[], round: number): RoundResult {
   const g = guesses[round];
   let total = 0;
@@ -292,8 +298,7 @@ function seededRandom(seed: string): () => number {
  * The day's five photos: drawn from a seed only the server knows (so nobody can work them out
  * ahead of time), then stored so a deploy mid-day can't change them.
  */
-async function dailyPhotos(day: string): Promise<Photo[]> {
-  const stored = await kv().get<string[]>(dailyPhotosKey(day));
+async function dailyPhotos(day: string, stored: unknown): Promise<Photo[]> {
   if (Array.isArray(stored) && stored.length === ROUNDS_PER_GAME) {
     const photos = await Promise.all(stored.map((id) => photoById(id)));
     if (photos.every(Boolean)) return photos as Photo[];
@@ -301,8 +306,12 @@ async function dailyPhotos(day: string): Promise<Photo[]> {
   const rand = seededRandom(hashKey(`daily:${day}`));
   const picked = chooseVaried(await pickPhotos(CANDIDATES, { minSpacingM: 150, rand }), ROUNDS_PER_GAME, rand);
   if (picked.length < ROUNDS_PER_GAME) return [];
-  await kv().set(dailyPhotosKey(day), picked.map((p) => p.id), { nx: true, ex: DAILY_TTL_SECONDS });
-  const ids = (await kv().get<string[]>(dailyPhotosKey(day))) ?? picked.map((p) => p.id);
+  // First start of the day: store our pick unless someone beat us to it, and read back whichever won.
+  const [, winner] = await Promise.all([
+    kv().set(dailyPhotosKey(day), picked.map((p) => p.id), { nx: true, ex: DAILY_TTL_SECONDS }),
+    kv().get<string[]>(dailyPhotosKey(day)),
+  ]);
+  const ids = winner ?? picked.map((p) => p.id);
   const photos = await Promise.all(ids.map((id) => photoById(id)));
   return photos.every(Boolean) ? (photos as Photo[]) : picked;
 }
@@ -316,8 +325,9 @@ export async function playedDaily(playerId: string): Promise<boolean> {
 
 async function underRateLimit(ipKey: string): Promise<boolean> {
   const key = `rl:game:${ipKey}:${Math.floor(Date.now() / 3_600_000)}`;
-  const n = await kv().incr(key);
-  if (n === 1) await kv().expire(key, 3600);
+  // SET NX creates the hour's counter with its expiry; INCR (which keeps the expiry) counts this
+  // request. Sent together, so the limit check costs one round trip.
+  const [, n] = await Promise.all([kv().set(key, 0, { nx: true, ex: 3600 }), kv().incr(key)]);
   return n <= RATE_LIMIT_PER_HOUR;
 }
 
@@ -333,42 +343,44 @@ export async function createGame({
   aids?: MapAids;
 }): Promise<NewGame> {
   const ipKey = hashKey(`ip:${ip}`);
-  if (!(await underRateLimit(ipKey))) throw new ApiError("rate-limited", 429);
-
   const owner = playerId ? playerKey(playerId) : undefined;
+  const day = daily ? dailyDate() : null;
+  const seenKey = day ? null : `seen:${owner ?? ipKey}`;
+  // Round trip 1: the rate limit, plus the day's photos (daily) or the player's recent photos (classic).
+  const [allowed, firstRead] = await Promise.all([
+    underRateLimit(ipKey),
+    kv().get<unknown>(day ? dailyPhotosKey(day) : seenKey!),
+  ]);
+  if (!allowed) throw new ApiError("rate-limited", 429);
+
   let game: StoredGame;
-  let seenKey: string | null = null;
   let seen: string[] = [];
-  if (daily) {
-    const day = dailyDate();
-    const photos = await dailyPhotos(day);
+  if (day) {
+    const photos = await dailyPhotos(day, firstRead);
     if (photos.length < ROUNDS_PER_GAME) throw new ApiError("no-photos", 503);
     // One shot a day: whatever the first daily start was, later ones only replay it.
     const first = owner ? await kv().set(dailyPlayedKey(day, owner), 1, { nx: true, ex: DAILY_TTL_SECONDS }) : false;
     const unranked: Unranked | undefined = !first ? "replay" : aids.landmarks || aids.labels ? "aids" : undefined;
     game = { photos, createdAt: Date.now(), owner, day, limitMs: DAILY_ROUND_SECONDS * 1000, ranked: !unranked, unranked };
   } else {
-    seenKey = `seen:${owner ?? ipKey}`;
-    const seenRaw = await kv().get<string[]>(seenKey);
-    seen = Array.isArray(seenRaw) ? seenRaw.filter((s) => typeof s === "string") : [];
+    seen = Array.isArray(firstRead) ? firstRead.filter((s): s is string => typeof s === "string") : [];
     const photos = await pickGamePhotos(seen);
     if (photos.length < ROUNDS_PER_GAME) throw new ApiError("no-photos", 503);
     game = { photos, createdAt: Date.now(), owner, ranked: false, unranked: "classic" };
   }
 
+  // Last round trip: store the game and (classic) the player's recent photos side by side.
+  const ids = game.photos.map((p) => p.id);
+  const seenWrite = seenKey
+    ? kv().set(seenKey, [...ids, ...seen.filter((s) => !ids.includes(s))].slice(0, SEEN_MAX), { ex: SEEN_TTL_SECONDS })
+    : Promise.resolve(true);
   let id = "";
   for (let attempt = 0; attempt < 3 && !id; attempt++) {
     const candidate = randomBytes(16).toString("base64url");
     if (await kv().set(gameKey(candidate), game, { ex: GAME_TTL_SECONDS, nx: true })) id = candidate;
   }
+  await seenWrite;
   if (!id) throw new ApiError("server", 500);
-
-  if (seenKey) {
-    const ids = game.photos.map((p) => p.id);
-    await kv().set(seenKey, [...ids, ...seen.filter((s) => !ids.includes(s))].slice(0, SEEN_MAX), {
-      ex: SEEN_TTL_SECONDS,
-    });
-  }
   return {
     id,
     rounds: game.photos.map(toRoundPhoto),
@@ -381,19 +393,21 @@ export async function createGame({
 
 /** Starts a timed round's clock (once: asking again returns the same clock). */
 export async function startRound(id: string, round: number): Promise<RoundClock> {
-  const game = await loadGame(id);
+  const [game, guesses] = await loadGameAndGuesses(id);
   if (!game.limitMs) throw new ApiError("untimed", 400);
   if (!Number.isInteger(round) || round < 0 || round >= game.photos.length) throw new ApiError("bad-round", 400);
-  const guesses = await loadGuesses(id);
   if (round > guesses.length) throw new ApiError("out-of-order", 409, { expected: guesses.length });
-  if (await kv().hsetnx(startsKey(id), String(round), Date.now())) await kv().expire(startsKey(id), GAME_TTL_SECONDS);
-  const startedAt = Number(await kv().hget<number>(startsKey(id), String(round)));
-  return { round, endsAt: startedAt + game.limitMs, serverNow: Date.now() };
+  // One round trip, run in order: claim the start time (the first ask wins), keep it a day, read the winner.
+  const [, , startedAt] = await Promise.all([
+    kv().hsetnx(startsKey(id), String(round), Date.now()),
+    kv().expire(startsKey(id), GAME_TTL_SECONDS),
+    kv().hget<number>(startsKey(id), String(round)),
+  ]);
+  return { round, endsAt: Number(startedAt) + game.limitMs, serverNow: Date.now() };
 }
 
 export async function gameState(id: string): Promise<GameState> {
-  const game = await loadGame(id);
-  const guesses = await loadGuesses(id);
+  const [game, guesses] = await loadGameAndGuesses(id);
   return {
     id,
     rounds: game.photos.map(toRoundPhoto),
@@ -414,16 +428,21 @@ export function validGuess(lat: unknown, lng: unknown): LngLat | null {
  * makes the first guess for a round win even when two requests race.
  */
 export async function submitGuess(id: string, round: number, guess: LngLat | null): Promise<RoundResult> {
-  const game = await loadGame(id);
-  if (!Number.isInteger(round) || round < 0 || round >= game.photos.length) throw new ApiError("bad-round", 400);
-  const guesses = await loadGuesses(id);
+  if (!GAME_ID_PATTERN.test(id)) throw new ApiError("not-found", 404);
+  if (!Number.isInteger(round) || round < 0) throw new ApiError("bad-round", 400);
+  // Round trip 1: the game, its guesses and this round's start time (only timed games use it).
+  const [game, guesses, startedAt] = await Promise.all([
+    loadGame(id),
+    loadGuesses(id),
+    kv().hget<number>(startsKey(id), String(round)),
+  ]);
+  if (round >= game.photos.length) throw new ApiError("bad-round", 400);
   if (round < guesses.length) return resultFor(game, guesses, round);
   if (round > guesses.length) throw new ApiError("out-of-order", 409, { expected: guesses.length });
 
   // Timed rounds: a pin that lands after the clock (plus a little grace) scores nothing.
   let pin = guess;
   if (game.limitMs) {
-    const startedAt = await kv().hget<number>(startsKey(id), String(round));
     if (startedAt === null || startedAt === undefined) throw new ApiError("not-started", 409);
     if (Date.now() > Number(startedAt) + game.limitMs + GRACE_MS) pin = null;
   } else if (!pin) {
@@ -439,8 +458,11 @@ export async function submitGuess(id: string, round: number, guess: LngLat | nul
     bullseye: distance !== null && isBullseye(distance),
     at: Date.now(),
   };
-  const first = await kv().hsetnx(guessesKey(id), String(round), stored);
-  if (first) await kv().expire(guessesKey(id), GAME_TTL_SECONDS);
+  // Round trip 2: store the guess (the first write wins a race) and keep it a day.
+  const [first] = await Promise.all([
+    kv().hsetnx(guessesKey(id), String(round), stored),
+    kv().expire(guessesKey(id), GAME_TTL_SECONDS),
+  ]);
   return resultFor(game, first ? [...guesses, stored] : await loadGuesses(id), round);
 }
 
@@ -453,8 +475,7 @@ export async function gameTotals(id: string): Promise<{
   day?: string;
   ranked: boolean;
 }> {
-  const game = await loadGame(id);
-  const guesses = await loadGuesses(id);
+  const [game, guesses] = await loadGameAndGuesses(id);
   return {
     complete: guesses.length === game.photos.length,
     total: guesses.reduce((s, g) => s + g.score, 0),
